@@ -1,0 +1,14 @@
+summary           1 of 3 services has an active issue: Exchange Online (serviceDegradation)
+recentlyRestored  []
+
+degraded (1)
+service          status
+---------------  ------------------
+Exchange Online  serviceDegradation
+
+services (3)
+service            status
+-----------------  ------------------
+Exchange Online    serviceDegradation
+Microsoft Teams    serviceOperational
+SharePoint Online  serviceOperational

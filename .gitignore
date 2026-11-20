@@ -1,0 +1,13 @@
+# Pinned tools and generated API types (scripts/setup.sh)
+.tools/
+types/
+
+# `tern ctl shot` output and sandboxes
+target/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp

@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "command": "entra users get",
+  "data": {
+    "id": "3f1c2a9e-5b7d-4c11-9e2a-7d8b6c5a4f30",
+    "displayName": "Jane Doe",
+    "userPrincipalName": "jane@contoso.com",
+    "accountEnabled": true,
+    "department": "Finance",
+    "mobilePhone": "",
+    "createdDateTime": "2024-02-01T09:12:00Z",
+    "manager": {
+      "displayName": "Bob Smith",
+      "userPrincipalName": "bob@contoso.com"
+    },
+    "licenses": [
+      "SPE_E3",
+      "POWER_BI_PRO"
+    ],
+    "signIns": {
+      "lastInteractive": "2026-11-19T16:02:11Z",
+      "lastNonInteractive": "2026-11-20T07:01:00Z",
+      "lastSuccessful": "2026-11-20T07:01:00Z",
+      "source": "signInActivity"
+    },
+    "daysSinceLastSignIn": 0
+  }
+}

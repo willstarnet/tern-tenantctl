@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "command": "health overview",
+  "data": {
+    "summary": "1 of 3 services has an active issue: Exchange Online (serviceDegradation)",
+    "degraded": [
+      {
+        "service": "Exchange Online",
+        "status": "serviceDegradation"
+      }
+    ],
+    "recentlyRestored": [],
+    "services": [
+      {
+        "service": "Exchange Online",
+        "status": "serviceDegradation"
+      },
+      {
+        "service": "Microsoft Teams",
+        "status": "serviceOperational"
+      },
+      {
+        "service": "SharePoint Online",
+        "status": "serviceOperational"
+      }
+    ]
+  }
+}

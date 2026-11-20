@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No user matches \"nobody@contoso.com\"",
+    "hint": "Check the spelling, or search with the user list command."
+  }
+}

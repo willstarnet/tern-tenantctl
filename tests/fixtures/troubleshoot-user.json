@@ -1,0 +1,108 @@
+{
+  "ok": true,
+  "command": "troubleshoot user",
+  "data": {
+    "user": {
+      "id": "3f1c2a9e-5b7d-4c11-9e2a-7d8b6c5a4f30",
+      "displayName": "Jane Doe",
+      "userPrincipalName": "jane@contoso.com"
+    },
+    "verdict": "2 problems for jane@contoso.com: Account is disabled and 1 more (could not check: risk).",
+    "findings": [
+      {
+        "severity": "high",
+        "area": "account",
+        "issue": "Account is disabled",
+        "detail": "Sign-ins are blocked until it is enabled again.",
+        "next": "tenantctl entra users enable jane@contoso.com"
+      },
+      {
+        "severity": "medium",
+        "area": "licenses",
+        "issue": "No Exchange Online plan assigned",
+        "detail": "The mailbox is soft-deleted 30 days after the last plan is removed.",
+        "next": "tenantctl entra users licenses jane@contoso.com"
+      },
+      {
+        "severity": "low",
+        "area": "sign-in",
+        "issue": "3 sign-in failures with 50126 InvalidUserNameOrPassword (succeeded since)",
+        "detail": "",
+        "next": "tenantctl entra signin-error 50126"
+      },
+      {
+        "severity": "info",
+        "area": "mailbox",
+        "issue": "Inbox rule \"Newsletters\" moves mail to Reading",
+        "detail": "Explains \"missing\" mail that was in fact delivered.",
+        "next": "tenantctl exchange rules list jane@contoso.com"
+      }
+    ],
+    "unavailable": [
+      {
+        "section": "risk",
+        "code": "FORBIDDEN",
+        "message": "Risk detections need Entra ID P2."
+      }
+    ],
+    "account": {
+      "enabled": false,
+      "userType": "Member",
+      "createdDateTime": "2024-02-01T09:12:00Z",
+      "lastPasswordChangeDateTime": "2026-10-09T08:00:00Z",
+      "daysSincePasswordChange": 42,
+      "isSynced": false
+    },
+    "mfa": {
+      "registered": true,
+      "methods": [
+        {
+          "type": "Password",
+          "createdDateTime": "2024-02-01T09:12:00Z"
+        },
+        {
+          "type": "Microsoft Authenticator",
+          "detail": "iPhone 15, app 6.8.50"
+        }
+      ]
+    },
+    "signins": {
+      "window": "last 7 days",
+      "total": 48,
+      "failures": 3,
+      "lastSuccess": "2026-11-19T16:02:11Z",
+      "failureGroups": [
+        {
+          "errorCode": 50126,
+          "name": "InvalidUserNameOrPassword",
+          "count": 3,
+          "lastSeen": "2026-11-18T07:44:00Z",
+          "apps": [
+            "Microsoft Teams"
+          ]
+        }
+      ]
+    },
+    "devices": [
+      {
+        "deviceName": "LAPTOP-0042",
+        "os": "Windows",
+        "complianceState": "noncompliant",
+        "lastSyncDateTime": "2026-11-17T10:00:00Z",
+        "daysSinceLastSync": 3
+      },
+      {
+        "deviceName": "Jane's iPhone",
+        "os": "iOS",
+        "complianceState": "compliant",
+        "lastSyncDateTime": "2026-11-20T08:30:00Z",
+        "daysSinceLastSync": 0
+      }
+    ],
+    "mailbox": {
+      "forwardingSmtpAddress": null,
+      "autoReply": "disabled",
+      "size": "2.1 GB"
+    }
+  }
+}

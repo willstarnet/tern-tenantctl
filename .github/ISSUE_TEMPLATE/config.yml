@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/willstarnet/tern-tenantctl/security/advisories/new
+    about: Privately, never in a public issue.
+  - name: tenantctl issues
+    url: https://github.com/willstarnet/tenantctl/issues
+    about: Wrong data, sign-in or permission problems in tenantctl itself.
+  - name: Tern documentation
+    url: https://docs.stencil.so/tern/
+    about: Problems with Tern itself or the plugin API.

@@ -1,0 +1,5 @@
+Error [FORBIDDEN]: Insufficient privileges to complete the operation.
+Hint: Sign in again with `tenantctl auth login` to consent to DeviceManagementManagedDevices.Read.All.
+needs  DeviceManagementManagedDevices.Read.All
+role   Intune Administrator
+Graph request id: 7a1b2c3d-4e5f-4061-8273-9a0b1c2d3e4f

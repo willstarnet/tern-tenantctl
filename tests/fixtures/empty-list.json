@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "command": "entra users list",
+  "data": [],
+  "meta": {
+    "count": 0,
+    "truncated": false
+  }
+}

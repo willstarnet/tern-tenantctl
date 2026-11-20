@@ -1,0 +1,12 @@
+# selene standard library: Luau plus Tern's `tern` global (typed by types/tern.d.luau).
+base: luau
+name: tern
+globals:
+  tern:
+    any: true
+  # Luau's assert takes an optional message; specs narrow optional values with `assert(x)`.
+  assert:
+    args:
+      - type: any
+      - required: false
+        type: string

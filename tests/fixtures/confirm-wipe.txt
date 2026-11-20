@@ -1,0 +1,14 @@
+Confirmation required for: intune devices wipe
+
+action    Wipe LAPTOP-0042: factory reset, erasing all data
+targetId  0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11
+warnings  ["The device cannot be recovered after a wipe."]
+
+device
+  deviceName       LAPTOP-0042
+  user             jane@contoso.com
+  os               Windows
+  complianceState  noncompliant
+
+To proceed (valid until 2026-11-20T15:30:00.000Z):
+  tenantctl intune devices wipe LAPTOP-0042 --confirm c0nf1rm-t0k3n

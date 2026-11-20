@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "command": "intune devices list",
+  "data": [
+    {
+      "id": "0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11",
+      "deviceName": "LAPTOP-0042",
+      "user": "jane@contoso.com",
+      "os": "Windows",
+      "osVersion": "10.0.26100.2314",
+      "complianceState": "noncompliant",
+      "lastSyncDateTime": "2026-11-17T10:00:00Z",
+      "isEncrypted": true
+    },
+    {
+      "id": "5e2a7b90-1d44-4f6a-8c3b-2b9d0a6e7f22",
+      "deviceName": "Jane's iPhone",
+      "user": "jane@contoso.com",
+      "os": "iOS",
+      "osVersion": "18.1",
+      "complianceState": "compliant",
+      "lastSyncDateTime": "2026-11-20T08:30:00Z",
+      "isEncrypted": true
+    },
+    {
+      "id": "9c4f6e21-3a8b-4d70-b215-8e1f5c3d2b33",
+      "deviceName": "MAC-0007",
+      "user": "bob@contoso.com",
+      "os": "macOS",
+      "osVersion": "15.1 (24B83)",
+      "complianceState": "inGracePeriod",
+      "lastSyncDateTime": "2026-11-12T13:15:00Z",
+      "isEncrypted": false
+    }
+  ],
+  "meta": {
+    "count": 3,
+    "total": 57,
+    "truncated": true,
+    "hint": "3 of 57 shown: raise --top or pass --all."
+  }
+}

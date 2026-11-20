@@ -1,0 +1,42 @@
+user         {"id":"3f1c2a9e-5b7d-4c11-9e2a-7d8b6c5a4f30","displayName":"Jane Doe","userPrincipalName":"jane@contoso.com"}
+verdict      2 problems for jane@contoso.com: Account is disabled and 1 more (could not check: risk).
+mfa          {"registered":true,"methods":[{"type":"Password","createdDateTime":"2024-02-01T09:12:00Z"},{"type":"Microsoft Authentic…
+mailbox      {"forwardingSmtpAddress":null,"autoReply":"disabled","size":"2.1 GB"}
+
+findings (4)
+severity  area      issue                                                         detail                                                        next
+--------  --------  ------------------------------------------------------------  ------------------------------------------------------------  -----------------------------------------------
+high      account   Account is disabled                                           Sign-ins are blocked until it is enabled again.               tenantctl entra users enable jane@contoso.com
+medium    licenses  No Exchange Online plan assigned                              The mailbox is soft-deleted 30 days after the last plan is …  tenantctl entra users licenses jane@contoso.com
+low       sign-in   3 sign-in failures with 50126 InvalidUserNameOrPassword (su…                                                                tenantctl entra signin-error 50126
+info      mailbox   Inbox rule "Newsletters" moves mail to Reading                Explains "missing" mail that was in fact delivered.           tenantctl exchange rules list jane@contoso.com
+
+unavailable (1)
+section  code       message
+-------  ---------  ---------------------------------
+risk     FORBIDDEN  Risk detections need Entra ID P2.
+
+account
+  enabled                     false
+  userType                    Member
+  createdDateTime             2024-02-01T09:12:00Z
+  lastPasswordChangeDateTime  2026-10-09T08:00:00Z
+  daysSincePasswordChange     42
+  isSynced                    false
+
+signins
+  window         last 7 days
+  total          48
+  failures       3
+  lastSuccess    2026-11-19T16:02:11Z
+
+  failureGroups (1)
+errorCode  name                       count  lastSeen
+---------  -------------------------  -----  --------------------
+50126      InvalidUserNameOrPassword  3      2026-11-18T07:44:00Z
+
+devices (2)
+deviceName     os       complianceState  lastSyncDateTime      daysSinceLastSync
+-------------  -------  ---------------  --------------------  -----------------
+LAPTOP-0042    Windows  noncompliant     2026-11-17T10:00:00Z  3
+Jane's iPhone  iOS      compliant        2026-11-20T08:30:00Z  0

@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "confirmationRequired": true,
+  "command": "intune devices wipe",
+  "preview": {
+    "action": "Wipe LAPTOP-0042: factory reset, erasing all data",
+    "targetId": "0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11",
+    "device": {
+      "deviceName": "LAPTOP-0042",
+      "user": "jane@contoso.com",
+      "os": "Windows",
+      "complianceState": "noncompliant"
+    },
+    "warnings": [
+      "The device cannot be recovered after a wipe."
+    ]
+  },
+  "confirm": {
+    "token": "c0nf1rm-t0k3n",
+    "expiresAt": "2026-11-20T15:30:00.000Z",
+    "rerun": "tenantctl intune devices wipe LAPTOP-0042 --confirm c0nf1rm-t0k3n"
+  },
+  "instructions": "Nothing has changed yet. Show this preview to the user and get explicit approval before re-running with --confirm."
+}

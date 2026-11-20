@@ -1,0 +1,7 @@
+id                                    deviceName     user              os       osVersion        complianceState  lastSyncDateTime      isEncrypted
+------------------------------------  -------------  ----------------  -------  ---------------  ---------------  --------------------  -----------
+0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11  LAPTOP-0042    jane@contoso.com  Windows  10.0.26100.2314  noncompliant     2026-11-17T10:00:00Z  true
+5e2a7b90-1d44-4f6a-8c3b-2b9d0a6e7f22  Jane's iPhone  jane@contoso.com  iOS      18.1             compliant        2026-11-20T08:30:00Z  true
+9c4f6e21-3a8b-4d70-b215-8e1f5c3d2b33  MAC-0007       bob@contoso.com   macOS    15.1 (24B83)     inGracePeriod    2026-11-12T13:15:00Z  false
+
+3 of 57 shown: raise --top or pass --all.

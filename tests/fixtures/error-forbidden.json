@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Insufficient privileges to complete the operation.",
+    "hint": "Sign in again with `tenantctl auth login` to consent to DeviceManagementManagedDevices.Read.All.",
+    "requestId": "7a1b2c3d-4e5f-4061-8273-9a0b1c2d3e4f",
+    "details": {
+      "needs": "DeviceManagementManagedDevices.Read.All",
+      "role": "Intune Administrator"
+    }
+  }
+}

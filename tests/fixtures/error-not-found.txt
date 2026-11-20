@@ -1,0 +1,2 @@
+Error [NOT_FOUND]: No user matches "nobody@contoso.com"
+Hint: Check the spelling, or search with the user list command.
