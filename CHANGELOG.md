@@ -11,8 +11,10 @@ All notable changes are listed here. The format follows
 - Actions on every record: a selected row's card, the record a report is about and the records
   nested in it get buttons for each tenantctl command that acts on them (sync, restart, rotate
   LAPS, revoke sessions, reset password, remove member, …), plus folded groups for lookups,
-  other areas and related records (a device's user, Entra object and Defender machine). A click
-  runs the command in the pane; one that needs more input is typed for you to finish.
+  other areas and related records (a device's user, Entra object and Defender machine).
+- Actions run in a **tenantctl** block below the pane, never typed into the terminal: progress
+  while they run, then their result with its own actions and a toast. A command that needs more
+  input asks for it first. Only tenantctl runs, and only from links carrying the plugin's secret.
 - **Run** on a finding's next step and **Approve** on a confirmation card.
 - An ambiguous match (`"WS-PF3" matches 4 devices`) lists the candidates as a table: **Use** runs
   the same command on that one, and selecting a row gives it its actions.

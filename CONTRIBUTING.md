@@ -32,7 +32,7 @@ downloads the published SDK's. Re-run it after upgrading Tern.
 
 ## Code layout
 
-- `host.luau` is the only file that touches the `tern` global.
+- `host.luau` and `window.luau` are the only files that touch the `tern` global.
 - `lens/` is pure: `render` takes `tern.ui` as an argument, so every module runs under Lune.
   `tests/lib/ui.luau` stands in for `tern.ui` with the same node shapes.
 - The lens reads JSON first and tenantctl's table format second. Both produce the same `Value`
@@ -44,8 +44,12 @@ downloads the published SDK's. Re-run it after upgrading Tern.
   `lens/actions.luau` says which kind each argument takes (`ARGS`) and which field of a record
   gives it (`REFS`): a new command that takes an existing kind needs nothing but the regenerated
   catalog; a new kind of record needs an entry in each.
-- A view's buttons send `run=<command line>` or `fill=<command line>`; `host.luau` types the line
-  into the pane the command ran in, found from the shell's `command_started` report.
+- A view's buttons send `run=<command line>`, or `ask=<input>|<command line>` when the command
+  needs more input. A lens can't redraw once its command has ended, so actions run elsewhere: the
+  click opens a `tern-tenantctl://action/…` link carrying a secret from the plugin's store;
+  `window.luau` checks it, asks for the input with `cx:prompt`, then sends the line to the tab's
+  `action` block (or opens one), which starts tenantctl with `tern.process.run` and redraws when
+  it ends. `lens/run.luau` turns the line back into argv and refuses anything but tenantctl.
 
 ## Tests
 
