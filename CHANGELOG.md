@@ -6,6 +6,17 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Actions on every record: a selected row's card, the record a report is about and the records
+  nested in it get buttons for each tenantctl command that acts on them (sync, restart, rotate
+  LAPS, revoke sessions, reset password, remove member, …), plus folded groups for lookups,
+  other areas and related records (a device's user, Entra object and Defender machine). A click
+  runs the command in the pane; one that needs more input is typed for you to finish.
+- **Run** on a finding's next step and **Approve** on a confirmation card.
+- An ambiguous match (`"WS-PF3" matches 4 devices`) lists the candidates as a table: **Use** runs
+  the same command on that one, and selecting a row gives it its actions.
+
 ## [0.1.0] - 2026-11-20
 
 ### Added

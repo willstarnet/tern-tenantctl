@@ -85,13 +85,16 @@
     },
     "devices": [
       {
+        "id": "0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11",
         "deviceName": "LAPTOP-0042",
         "os": "Windows",
         "complianceState": "noncompliant",
         "lastSyncDateTime": "2026-11-17T10:00:00Z",
-        "daysSinceLastSync": 3
+        "daysSinceLastSync": 3,
+        "azureADDeviceId": "6d1f0a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
       },
       {
+        "id": "5e2a7b90-1d44-4f6a-8c3b-2b9d0a6e7f22",
         "deviceName": "Jane's iPhone",
         "os": "iOS",
         "complianceState": "compliant",

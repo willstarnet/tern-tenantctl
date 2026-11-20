@@ -1,0 +1,26 @@
+{
+  "ok": false,
+  "error": {
+    "code": "AMBIGUOUS",
+    "message": "\"WS-PF3\" matches 2 devices",
+    "hint": "Ask the user which device they mean, then pass its id.",
+    "details": [
+      {
+        "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "deviceName": "WS-PF3",
+        "serialNumber": "PF3A0001",
+        "user": "jane@contoso.com",
+        "os": "Windows",
+        "lastSyncDateTime": "2026-11-19T09:00:00Z"
+      },
+      {
+        "id": "6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b",
+        "deviceName": "WS-PF3",
+        "serialNumber": "PF3A0002",
+        "user": null,
+        "os": "Windows",
+        "lastSyncDateTime": "2026-08-02T14:30:00Z"
+      }
+    ]
+  }
+}

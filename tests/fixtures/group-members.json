@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "command": "entra groups members",
+  "data": [
+    {
+      "type": "user",
+      "id": "7c2e4a10-9b3d-4f5e-8a6b-1c2d3e4f5a6b",
+      "displayName": "Bob Smith",
+      "userPrincipalName": "bob@contoso.com",
+      "accountEnabled": true
+    },
+    {
+      "type": "device",
+      "id": "2f3e4d5c-6b7a-4c8d-9e0f-1a2b3c4d5e6f",
+      "displayName": "LAPTOP-0042",
+      "deviceId": "6d1f0a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+      "operatingSystem": "Windows"
+    }
+  ],
+  "meta": {
+    "count": 2,
+    "truncated": false
+  }
+}
