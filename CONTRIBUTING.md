@@ -37,6 +37,15 @@ downloads the published SDK's. Re-run it after upgrading Tern.
   `tests/lib/ui.luau` stands in for `tern.ui` with the same node shapes.
 - The lens reads JSON first and tenantctl's table format second. Both produce the same `Value`
   tree, so one renderer serves both.
+- Actions come from three places. `lens/catalog.luau` lists tenantctl's commands and their
+  arguments; it is generated, never edited: run `bun scripts/gen-catalog.ts ../tenantctl` after
+  tenantctl adds, renames or changes a command. `lens/records.luau` says what kind of record each
+  part of a command's output is (`troubleshoot user`'s `devices` are Intune devices).
+  `lens/actions.luau` says which kind each argument takes (`ARGS`) and which field of a record
+  gives it (`REFS`): a new command that takes an existing kind needs nothing but the regenerated
+  catalog; a new kind of record needs an entry in each.
+- A view's buttons send `run=<command line>` or `fill=<command line>`; `host.luau` types the line
+  into the pane the command ran in, found from the shell's `command_started` report.
 
 ## Tests
 

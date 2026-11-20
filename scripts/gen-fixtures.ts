@@ -96,13 +96,16 @@ const fixtures: Record<string, Fixture> = {
       },
       devices: [
         {
+          id: '0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11',
           deviceName: 'LAPTOP-0042',
           os: 'Windows',
           complianceState: 'noncompliant',
           lastSyncDateTime: '2026-11-17T10:00:00Z',
           daysSinceLastSync: 3,
+          azureADDeviceId: '6d1f0a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b',
         },
         {
+          id: '5e2a7b90-1d44-4f6a-8c3b-2b9d0a6e7f22',
           deviceName: "Jane's iPhone",
           os: 'iOS',
           complianceState: 'compliant',
@@ -193,6 +196,53 @@ const fixtures: Record<string, Fixture> = {
     kind: 'success',
     command: 'entra users list',
     result: { items: [], truncated: false },
+  },
+  'group-members': {
+    kind: 'success',
+    command: 'entra groups members',
+    result: {
+      items: [
+        {
+          type: 'user',
+          id: '7c2e4a10-9b3d-4f5e-8a6b-1c2d3e4f5a6b',
+          displayName: 'Bob Smith',
+          userPrincipalName: 'bob@contoso.com',
+          accountEnabled: true,
+        },
+        {
+          type: 'device',
+          id: '2f3e4d5c-6b7a-4c8d-9e0f-1a2b3c4d5e6f',
+          displayName: 'LAPTOP-0042',
+          deviceId: '6d1f0a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b',
+          operatingSystem: 'Windows',
+        },
+      ],
+      truncated: false,
+    },
+  },
+  'error-ambiguous': {
+    kind: 'error',
+    code: 'AMBIGUOUS',
+    message: '"WS-PF3" matches 2 devices',
+    hint: 'Ask the user which device they mean, then pass its id.',
+    details: [
+      {
+        id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+        deviceName: 'WS-PF3',
+        serialNumber: 'PF3A0001',
+        user: 'jane@contoso.com',
+        os: 'Windows',
+        lastSyncDateTime: '2026-11-19T09:00:00Z',
+      },
+      {
+        id: '6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b',
+        deviceName: 'WS-PF3',
+        serialNumber: 'PF3A0002',
+        user: null,
+        os: 'Windows',
+        lastSyncDateTime: '2026-08-02T14:30:00Z',
+      },
+    ],
   },
   'error-not-found': {
     kind: 'error',

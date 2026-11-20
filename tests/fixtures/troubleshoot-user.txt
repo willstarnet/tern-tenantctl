@@ -36,7 +36,7 @@ errorCode  name                       count  lastSeen
 50126      InvalidUserNameOrPassword  3      2026-11-18T07:44:00Z
 
 devices (2)
-deviceName     os       complianceState  lastSyncDateTime      daysSinceLastSync
--------------  -------  ---------------  --------------------  -----------------
-LAPTOP-0042    Windows  noncompliant     2026-11-17T10:00:00Z  3
-Jane's iPhone  iOS      compliant        2026-11-20T08:30:00Z  0
+id                                    deviceName     os       complianceState  lastSyncDateTime      daysSinceLastSync  azureADDeviceId
+------------------------------------  -------------  -------  ---------------  --------------------  -----------------  ------------------------------------
+0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11  LAPTOP-0042    Windows  noncompliant     2026-11-17T10:00:00Z  3                  6d1f0a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+5e2a7b90-1d44-4f6a-8c3b-2b9d0a6e7f22  Jane's iPhone  iOS      compliant        2026-11-20T08:30:00Z  0

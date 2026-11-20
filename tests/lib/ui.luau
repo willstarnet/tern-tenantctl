@@ -58,6 +58,16 @@ end
 function ui.overflow(hidden: number): Node
 	return node("overflow", { hidden = hidden })
 end
+function ui.button(t: string?, props: { [string]: any }?): Node
+	local p: { [string]: any } = { text = t or "" }
+	for k, v in props or {} do
+		p[k] = v
+	end
+	return node("button", p)
+end
+function ui.node(k: string, props: { [string]: any }?, children: { Node }?): Node
+	return node(k, props, children)
+end
 
 -- Every node of kind `k` in `root`, depth first.
 local function find(root: Node, k: string, into: { Node }?): { Node }

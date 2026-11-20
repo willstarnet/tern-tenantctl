@@ -30,8 +30,9 @@ export type Doc = {
 	hint: string?,
 	details: Value?,
 	requestId: string?,
-	-- confirm
+	-- the command tenantctl ran (`intune devices list`; JSON only for a success)
 	command: string?,
+	-- confirm
 	preview: Value?,
 	rerun: string?,
 	expiresAt: string?,
@@ -112,6 +113,7 @@ local function fromEnvelope(env: Value, notes: { string }): Doc
 			return {
 				kind = "success",
 				format = "json",
+				command = json.text(json.get(env, "command")),
 				data = json.get(env, "data"),
 				meta = metaOf(json.get(env, "meta")),
 				notes = notes,
