@@ -1,28 +1,56 @@
 --!strict
--- tern-tenantctl's host half, the only file that touches the `tern` global:
+-- tern-tenantctl's host half, the only file besides window.luau that touches the `tern` global:
 --
 -- - the `tenantctl` lens: while a command runs its raw output shows (so device-code sign-ins and
---   y/N approvals stay visible and answerable); when it ends, the output becomes a native view
---   whose actions type tenantctl commands into the pane;
+--   y/N approvals stay visible and answerable); when it ends, the output becomes a native view;
+-- - the `action` block, where the views' actions run: a click opens an action link, which
+--   window.luau routes here (asking for any input first), and the block runs tenantctl and draws
+--   the result;
 -- - a spawn filter that gives new shells TENANTCTL_OUTPUT=json, because inside a lens tenantctl
 --   writes to a terminal and would otherwise print its table format, which cuts long values.
 
 local output = require("./lens/output")
 local render = require("./lens/render")
 local actions = require("./lens/actions")
+local run = require("./lens/run")
+local runs = require("./lens/block")
 
 -- Output past this stays raw: parsing runs inside the host's 2-second budget.
 local MAX_BYTES = 4 * 1024 * 1024
--- How long a lens waits to hear which pane its command started in.
-local MATCH_MS = 2000
--- After typing a command, how long its pane counts as busy before the shell reports it started.
-local SENT_MS = 1500
+-- An action that runs longer is stopped.
+local TIMEOUT_MS = 10 * 60 * 1000
 
-type State = {
+-- A secret action links carry, shared with window.luau through the plugin's store: a link printed
+-- in a terminal can't name it, so clicking one runs nothing.
+local function newNonce(): string
+	local seed = math.floor(tern.now() * 1000) + os.time()
+	local address = tostring({})
+	for i = 1, #address do
+		seed += string.byte(address, i) * i
+	end
+	math.randomseed(seed)
+	local parts: { string } = {}
+	for _ = 1, 4 do
+		table.insert(parts, string.format("%08x", math.random(0, 0x7fffffff)))
+	end
+	return table.concat(parts)
+end
+
+local nonce = newNonce()
+tern.kv.set("nonce", nonce)
+
+-- The link a click opens: the command line, what to ask for first and where to run it.
+local function link(line: string, ask: string?, cwd: string?): string
+	local payload = tern.json.encode({ nonce = nonce, line = line, ask = ask, cwd = cwd })
+	return "tern-tenantctl://action/" .. tern.base64.encode(payload, { url = true })
+end
+
+type LensState = {
 	program: string,
 	args: { string },
 	typed: string,
 	line: string,
+	cwd: string?,
 	lines: { string },
 	bytes: number,
 	tooLarge: boolean,
@@ -34,84 +62,27 @@ type State = {
 	inv: actions.Invocation?,
 	-- selected row per table path
 	selected: { [string]: number? },
-	-- the pane the command ran in, once the shell said so
-	pane: number?,
 }
 
-local function trim(s: string): string
-	return (string.gsub(string.gsub(s, "^%s+", ""), "%s+$", ""))
-end
-
--- Which pane each running command line is in, from the shell's reports, so a lens knows where to
--- type its actions. A lens may open before or after its command's report arrives.
-local running: { [string]: number } = {}
-local waiting: { [string]: { state: State, at: number } } = {}
--- Panes running a command (typing into one would answer its prompt), and when an action was typed.
-local busy: { [number]: boolean } = {}
-local sent: { [number]: number } = {}
-
-tern.on("command_started", function(ev: CommandStartedEvent, _cx: EffectCx)
-	local line = trim(ev.line)
-	busy[ev.pane] = true
-	sent[ev.pane] = nil
-	running[line] = ev.pane
-	local now = tern.now()
-	for key, w in waiting do
-		if key == line and now - w.at < MATCH_MS then
-			w.state.pane = ev.pane
+-- Toggles the selected row an event names (`data#3`, `r2:data.devices#1`).
+local function toggleRow(selected: { [string]: number? }, ev: UiEvent)
+	if (ev.ev == "select" or ev.ev == "activate") and type(ev.item) == "string" then
+		local path, index = string.match(ev.item, "^(.*)#(%d+)$")
+		if path and index then
+			local i = tonumber(index) :: number
+			selected[path] = if selected[path] == i then nil else i
 		end
-		if key == line or now - w.at >= MATCH_MS then
-			waiting[key] = nil
-		end
-	end
-end)
-
-tern.on("command_finished", function(ev: CommandFinishedEvent, _cx: EffectCx)
-	busy[ev.pane] = nil
-	local line = trim(ev.line)
-	if running[line] == ev.pane then
-		running[line] = nil
-	end
-end)
-
-tern.on("pane_exited", function(ev: PaneExitedEvent, _cx: EffectCx)
-	busy[ev.pane] = nil
-	sent[ev.pane] = nil
-	for line, pane in running do
-		if pane == ev.pane then
-			running[line] = nil
-		end
-	end
-end)
-
--- Types `line` at the prompt of the pane the view is in, and runs it unless `run` is false. Without
--- a pane to type into (one that is busy, or a view restored after a reload) it goes on the clipboard.
-local function send(state: State, line: string, run: boolean, cx: EffectCx)
-	-- the view built this line; a control character would let a shell read more than one line
-	if string.find(line, "%c") then
-		return
-	end
-	local pane = state.pane
-	local typing = pane and sent[pane] and tern.now() - (sent[pane] :: number) < SENT_MS
-	if pane == nil or busy[pane] or typing then
-		cx:copy(line)
-		cx:toast("info", "Command copied", if pane then "The pane is busy" else "Paste it at the prompt")
-		return
-	end
-	-- Ctrl-E Ctrl-U (5, 21) first: whatever was typed at the prompt goes, so the line runs alone
-	tern.pane.write(pane, "\5\21" .. line .. (if run then "\r" else ""))
-	if run then
-		sent[pane] = tern.now()
 	end
 end
 
-local lens: LensDef<State> = {
-	open = function(run, _cx)
-		local state: State = {
-			program = run.program,
-			args = run.args,
-			typed = run.typed,
-			line = run.line,
+local lens: LensDef<LensState> = {
+	open = function(r, _cx)
+		return {
+			program = r.program,
+			args = r.args,
+			typed = r.typed,
+			line = r.line,
+			cwd = r.cwd,
 			lines = {},
 			bytes = 0,
 			tooLarge = false,
@@ -120,14 +91,7 @@ local lens: LensDef<State> = {
 			doc = nil,
 			inv = nil,
 			selected = {},
-			pane = nil,
 		}
-		local typed = trim(run.typed)
-		state.pane = running[typed] or running[trim(run.line)]
-		if state.pane == nil then
-			waiting[typed] = { state = state, at = tern.now() }
-		end
-		return state
 	end,
 
 	line = function(state, l)
@@ -168,30 +132,114 @@ local lens: LensDef<State> = {
 
 	event = function(state, ev, cx)
 		if ev.ev == "action" then
-			-- `run=<line>` / `fill=<line>`: Tern splits the name at `=`; split it here when it didn't
-			local act, value = ev.act, ev.value
-			if value == nil and type(act) == "string" then
-				local a, v = string.match(act, "^(%a+)=(.*)$")
-				if a then
-					act, value = a, v
-				end
-			end
-			if (act == "run" or act == "fill") and type(value) == "string" then
-				send(state, value, act == "run", cx)
+			local line, ask = run.parseAct(ev.act, ev.value)
+			if line then
+				cx:open(link(line, ask, state.cwd))
 			end
 			return
 		end
-		if (ev.ev == "select" or ev.ev == "activate") and type(ev.item) == "string" then
-			local path, index = string.match(ev.item, "^(.*)#(%d+)$")
-			if path and index then
-				local i = tonumber(index) :: number
-				state.selected[path] = if state.selected[path] == i then nil else i
-			end
-		end
+		toggleRow(state.selected, ev)
 	end,
 }
 
 tern.lens.define("tenantctl", lens)
+
+-- Starts `line` in the block: tenantctl itself, through the login shell so it is found on the same
+-- PATH as in a terminal, its words passed as arguments (never read as shell code).
+local function start(state: runs.State, cx: BlockCx, line: string, cwd: string?)
+	local r = runs.add(state, line, cwd)
+	local spec = r.spec
+	if spec == nil then
+		return
+	end
+	local shell = tern.getenv("SHELL") or "/bin/sh"
+	local argv = if string.match(shell, "fish$")
+		then { shell, "-lc", "exec $argv" }
+		else { shell, "-lc", 'exec "$@"', "tenantctl" }
+	table.move(spec.argv, 1, #spec.argv, #argv + 1, argv)
+	local env = table.clone(spec.env)
+	env.TENANTCTL_OUTPUT = "json"
+	local began = tern.now()
+	local ok, err = pcall(
+		tern.process.run :: any,
+		argv,
+		{ cwd = cwd or tern.getenv("HOME"), env = env, timeout_ms = TIMEOUT_MS },
+		function(res: ProcessResult)
+			runs.settle(r, res, (tern.now() - began) / 1000)
+			cx:render()
+			cx:save()
+			local level, text, sub = runs.summary(r)
+			cx:toast(level :: ToastLevel, text, sub)
+		end
+	)
+	if not ok then
+		runs.settle(r, { status = -1, stdout = "", stderr = tostring(err), timed_out = false }, 0)
+	end
+end
+
+-- An action link's payload, when it carries this plugin's secret.
+local function decode(text: any): { line: string, cwd: string? }?
+	if type(text) ~= "string" then
+		return nil
+	end
+	local ok, payload = pcall(tern.json.decode, text)
+	if not ok or type(payload) ~= "table" or payload.nonce ~= nonce or type(payload.line) ~= "string" then
+		return nil
+	end
+	return { line = payload.line, cwd = if type(payload.cwd) == "string" then payload.cwd else nil }
+end
+
+local block: BlockDef<runs.State> = {
+	init = function(cx, args, saved)
+		if saved ~= nil then
+			return runs.restore(saved)
+		end
+		local state = runs.new()
+		local payload = decode(args[1])
+		if payload then
+			start(state, cx, payload.line, payload.cwd)
+		end
+		-- saved at once, so a restart shows this run instead of starting it again
+		cx:save()
+		return state
+	end,
+
+	view = function(state, _cx)
+		return { main = runs.view(tern.ui, state, os.time()) }
+	end,
+
+	title = function(_state)
+		return "tenantctl"
+	end,
+
+	event = function(state, ev, cx)
+		if ev.ev == "action" and ev.act == "enqueue" then
+			-- an action routed here by window.luau
+			local payload = decode(ev.value)
+			if payload then
+				start(state, cx, payload.line, payload.cwd)
+			end
+			return
+		elseif ev.ev == "action" then
+			local line, ask = run.parseAct(ev.act, ev.value)
+			if line then
+				local cwd = if state.runs[1] then state.runs[1].cwd else nil
+				if ask then
+					cx:open(link(line, ask, cwd))
+				else
+					start(state, cx, line, cwd)
+				end
+			end
+			return
+		end
+		toggleRow(state.selected, ev)
+	end,
+
+	save = runs.save,
+	font = "sans",
+}
+
+tern.block.define("action", block)
 
 tern.on("spawn", function(spec: SpawnSpec): SpawnSpec?
 	-- A value the user set (login environment or this filter's predecessors) wins.

@@ -100,10 +100,10 @@ describe("actions on a selected row", function()
 		expect(group(card, "Defender machine")).notToBeNil()
 	end)
 
-	it("types a command that needs more input instead of running it", function()
+	it("asks for the input a command still needs", function()
 		local root = view("devices-list.json", "tenantctl intune devices list", { data = 1 })
 		local rename = offered(find(root, "card")[1])["Rename…"]
-		expect(rename.act).toBe(`fill=tenantctl intune devices rename {LAPTOP} --name `)
+		expect(rename.act).toBe(`ask=--name|tenantctl intune devices rename {LAPTOP}`)
 	end)
 
 	it("quotes values for the shell", function()

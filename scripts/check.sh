@@ -5,7 +5,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$PWD/.tools/bin:$PATH"
 
-sources=(host.luau lens tests)
+sources=(host.luau window.luau lens tests)
 failed=()
 
 run() {
@@ -24,7 +24,7 @@ typecheck() {
   # luau-lsp's definition parser lacks the `userdata` type the SDK file uses.
   { echo "type userdata = any"; cat types/tern.d.luau; } > .tools/tern.d.luau
   luau-lsp analyze --platform=standard --definitions=@tern=.tools/tern.d.luau \
-    host.luau $(find lens -name '*.luau' | sort)
+    host.luau window.luau $(find lens -name '*.luau' | sort)
 }
 
 run format stylua --check "${sources[@]}"

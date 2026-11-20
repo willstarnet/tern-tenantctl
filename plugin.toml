@@ -5,6 +5,14 @@ version = "0.1.0"
 description = "Native views for tenantctl output: reports with ranked findings, tables with row details, readable errors."
 icon = "shield"
 host = "host.luau"
+window = "window.luau"
+
+# Where the views' actions run: one block per tab, below the pane they were clicked in.
+[[blocks]]
+id = "action"
+title = "tenantctl"
+icon = "shield"
+palette = false
 
 # Every tenantctl command: the lens shows raw output while it runs and a native view once it ends,
 # and leaves help, --version and anything it cannot read raw. Zsh reports alias-expanded lines, so

@@ -8,6 +8,7 @@ local format = require("./format")
 local output = require("./output")
 local actions = require("./actions")
 local records = require("./records")
+local run = require("./run")
 
 type Value = json.Value
 type Doc = output.Doc
@@ -286,7 +287,7 @@ end
 
 -- What an action's click sends: its line, and the input to ask for first if it needs any.
 local function act(a: Action): string
-	return (if a.fill then "fill=" else "run=") .. a.line
+	return run.act(a.line, a.ask)
 end
 
 local function actionButton(ui: UI, a: Action): Node
@@ -425,7 +426,7 @@ local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, pare
 			table.insert(
 				cells,
 				1,
-				if line then { button = { text = "Use", act = "run=" .. line, variant = "primary" } } else ""
+				if line then { button = { text = "Use", act = run.act(line), variant = "primary" } } else ""
 			)
 		end
 		tableRows[i] = { id = `{path}#{i}`, cells = cells }
@@ -488,16 +489,16 @@ local function findingNode(ui: UI, f: Value, opts: Opts): Node
 	if nextCommand and opts.inv then
 		-- a `<placeholder>` is the person's to fill in
 		local line = actions.relocate(nextCommand, opts.inv)
-		local fill = string.find(line, "<", 1, true) ~= nil
+		local ask = run.askOf(line)
 		table.insert(
 			lines,
 			with(
 				ui.row({
 					copyable(ui, nextCommand),
-					ui.button(if fill then "Edit" else "Run", {
+					ui.button(if ask then "Run…" else "Run", {
 						size = "sm",
-						title = if fill then "Type it at the prompt" else "Run it",
-						actions = { click = (if fill then "fill=" else "run=") .. line },
+						title = "Run it",
+						actions = { click = run.act(line, ask) },
 					}),
 				}),
 				{ align = "center" }
@@ -835,7 +836,7 @@ local function confirmView(ui: UI, doc: Doc, opts: Opts): { Node }
 					variant = "primary",
 					size = "sm",
 					title = "Run it",
-					actions = { click = "run=" .. actions.relocate(doc.rerun, opts.inv) },
+					actions = { click = run.act(actions.relocate(doc.rerun, opts.inv)) },
 				})
 			)
 		end
