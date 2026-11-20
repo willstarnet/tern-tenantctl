@@ -22,12 +22,13 @@ export type Entity = {
 
 export type Action = {
 	label: string,
-	-- the command line, quoted for the shell; ends in a space when `fill`
+	-- the command line, quoted for the shell
 	line: string,
 	-- "read" | "write" | "destructive"
 	risk: string,
-	-- the command needs more input: it is typed at the prompt, not run
-	fill: boolean,
+	-- input the command still needs, asked for before it runs (see `run.complete`): `--name` (a
+	-- flag's value), `members` (a positional's), `*` (options the person types); nil when complete
+	ask: string?,
 	-- one of the record's own commands (`intune devices …` on a device), shown as a button
 	home: boolean,
 	summary: string,
@@ -775,9 +776,9 @@ local function noun(id: string): string
 end
 
 -- The command line for `c` with the `bound` argument values: positionals bare while every earlier
--- one is bound, the rest as flags. With a required argument missing it ends where the person types
--- it (`… add-member Sales ` or `… rename X --name `) and `fill` is true.
-local function lineFor(inv: Invocation, c: Command, slots: { Slot }, bound: { [string]: string }): (string?, boolean)
+-- one is bound, the rest as flags; and, when a required argument is missing, what to ask for it:
+-- the positional's name when a bare word at the end fills it, else its flag (`--name`).
+local function lineFor(inv: Invocation, c: Command, slots: { Slot }, bound: { [string]: string }): (string?, string?)
 	local parts: { string } = { start(inv), c.id }
 	local missing: string? = nil
 	local bare = true
@@ -786,7 +787,7 @@ local function lineFor(inv: Invocation, c: Command, slots: { Slot }, bound: { [s
 		if v then
 			local q = quote(v)
 			if q == nil then
-				return nil, false
+				return nil, nil
 			end
 			if s.positional and bare and string.sub(v, 1, 1) ~= "-" then
 				table.insert(parts, q)
@@ -797,29 +798,24 @@ local function lineFor(inv: Invocation, c: Command, slots: { Slot }, bound: { [s
 			end
 		else
 			if s.required and missing == nil then
-				-- a bare word typed at the end fills the first unbound positional
-				missing = if s.positional and bare then "" else `--{s.name}`
+				missing = if s.positional and bare then s.name else `--{s.name}`
 			end
 			bare = bare and not s.positional
 		end
 	end
-	local line = table.concat(parts, " ")
-	if missing then
-		return (if missing == "" then line else `{line} {missing}`) .. " ", true
-	end
-	return line, false
+	return table.concat(parts, " "), missing
 end
 
--- Commands whose required input tenantctl only checks when they run (one of several flags): they
--- are typed for the person to finish, never run, with the flag they most likely need.
+-- Commands whose required input tenantctl only checks when they run (one of several flags): what
+-- to ask for, `*` being options the person types (`--department Sales`).
 local FINISH: { [string]: string } = {
-	["entra users update"] = "",
-	["entra apps revoke-consent"] = "",
-	["exchange hold"] = "",
-	["exchange auto-reply set"] = "",
-	["defender incidents update"] = "",
-	["defender alerts update"] = "",
-	["intune autopilot update"] = "",
+	["entra users update"] = "*",
+	["entra apps revoke-consent"] = "*",
+	["exchange hold"] = "*",
+	["exchange auto-reply set"] = "*",
+	["defender incidents update"] = "*",
+	["defender alerts update"] = "*",
+	["intune autopilot update"] = "*",
 	["intune apps unassign"] = "--group",
 	["intune compliance assign"] = "--group",
 	["intune compliance unassign"] = "--group",
@@ -827,7 +823,7 @@ local FINISH: { [string]: string } = {
 	["intune config unassign"] = "--group",
 	["intune autopilot profiles assign"] = "--group",
 	["intune autopilot profiles unassign"] = "--group",
-	["sharepoint files unshare"] = "--all-links",
+	["sharepoint files unshare"] = "*",
 }
 
 -- Commands that would change nothing given the record's state: left out when `field` is `when`.
@@ -994,23 +990,21 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 		if platforms and platform and not table.find(platforms, platform) then
 			continue
 		end
-		local line, fill = lineFor(inv, c, slots, bound)
+		local line, ask = lineFor(inv, c, slots, bound)
 		if line == nil then
 			continue
 		end
-		local finish = FINISH[c.id]
 		-- an unshare with the permission picked is complete
-		if finish and not fill and not bound["permission-id"] then
-			line = if finish == "" then `{line} ` else `{line} {finish} `
-			fill = true
+		if ask == nil and not bound["permission-id"] then
+			ask = FINISH[c.id]
 		end
 		local domain = string.match(c.id, "^%S+") :: string
 		local home = homeOf(c.id, kind)
 		local action: Action = {
-			label = labelOf(c, kind, slots) .. (if fill then "…" else ""),
+			label = labelOf(c, kind, slots) .. (if ask then "…" else ""),
 			line = line :: string,
 			risk = c.risk,
-			fill = fill,
+			ask = ask,
 			-- a change through the parent (remove this member) is what the list is for: a button
 			home = home ~= nil or slot ~= slots[1],
 			summary = c.summary,
@@ -1096,6 +1090,13 @@ local function rerunWith(inv: Invocation, old: string, new: string): string?
 	return if done then table.concat(parts, " ") else nil
 end
 
+-- The risk (`read`, `write`, `destructive`) of the command tenantctl `args` run, if known.
+local function riskOf(args: { string }): string?
+	local inv = invocation("tenantctl", args)
+	local c = if inv.id then byId[inv.id] else nil
+	return if c then c.risk else nil
+end
+
 return {
 	KINDS = KINDS,
 	quote = quote,
@@ -1106,4 +1107,5 @@ return {
 	targets = targets,
 	ambiguousArg = ambiguousArg,
 	rerunWith = rerunWith,
+	riskOf = riskOf,
 }

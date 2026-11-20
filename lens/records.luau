@@ -233,7 +233,8 @@ end
 
 -- `data`, `data.devices`, `data#3.members` → ``, `devices`, `members`.
 local function relative(path: string): string
-	local rel = string.gsub(string.gsub(path, "^data", ""), "#%d+", "")
+	-- `r2:data.devices#1` (a result in an actions block) reads as `data.devices#1`
+	local rel = string.gsub(string.gsub(string.gsub(path, "^[%w]+:", ""), "^data", ""), "#%d+", "")
 	return (string.gsub(rel, "^%.", ""))
 end
 

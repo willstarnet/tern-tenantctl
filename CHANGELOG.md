@@ -6,13 +6,17 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
 ### Added
 
 - Actions on every record: a selected row's card, the record a report is about and the records
   nested in it get buttons for each tenantctl command that acts on them (sync, restart, rotate
   LAPS, revoke sessions, reset password, remove member, …), plus folded groups for lookups,
-  other areas and related records (a device's user, Entra object and Defender machine). A click
-  runs the command in the pane; one that needs more input is typed for you to finish.
+  other areas and related records (a device's user, Entra object and Defender machine).
+- Actions run in a **tenantctl** block below the pane, never typed into the terminal: progress
+  while they run, then their result with its own actions and a toast. A command that needs more
+  input asks for it first. Only tenantctl runs, and only from links carrying the plugin's secret.
 - **Run** on a finding's next step and **Approve** on a confirmation card.
 - An ambiguous match (`"WS-PF3" matches 4 devices`) lists the candidates as a table: **Use** runs
   the same command on that one, and selecting a row gives it its actions.
@@ -30,5 +34,6 @@ All notable changes are listed here. The format follows
 - Reads tenantctl's JSON, its table format and `--csv`.
 - New shells get `TENANTCTL_OUTPUT=json` unless it is already set.
 
-[Unreleased]: https://github.com/willstarnet/tern-tenantctl/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/willstarnet/tern-tenantctl/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/willstarnet/tern-tenantctl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/willstarnet/tern-tenantctl/releases/tag/v0.1.0

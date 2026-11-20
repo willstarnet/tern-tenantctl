@@ -65,13 +65,18 @@ incidents, alerts, mailboxes, inbox rules, sites, files, teams and more:
 Commands that would do nothing are left out: **Enable** on an enabled account, **Lock** on a
 Windows device, **Rotate LAPS** on an iPhone.
 
-A click types the command at the prompt of the pane the view is in and runs it, with the same
-program path and `--profile` as the run that printed the view; its result appears as a new view
-below. tenantctl's own safety still applies: writes need writes enabled, destructive commands
-ask for your approval (dialog, terminal prompt or a confirmation card). A command that needs more
-input (**Rename…**, **Add license…**, a Defender action's `--comment`) is typed but not run, so
-you finish it. When the pane is busy, or after Tern restarted and no longer knows which pane the
-view belongs to, the command goes to the clipboard instead.
+A click runs the action in the **tenantctl** block: a panel that opens below the pane the first
+time and collects every action you run from that tab, newest first. Each shows its command, a
+progress bar while it runs and then its result, drawn like any view with its own actions and a
+toast when it ends. Nothing is typed into your terminal. Actions run with the same program path
+and `--profile` as the command that printed the view, from your login shell's `PATH`.
+
+A command that needs more input (**Rename…**, **Add license…**, a Defender action's
+`--comment`) asks for it first in a field over the pane. tenantctl's own safety still applies:
+writes need writes enabled, and destructive commands ask for your approval in tenantctl's
+dialog; with `confirmMode token` the result is a confirmation card whose **Approve** runs it. An
+action that needs a terminal (a `tty` approval prompt, a device-code sign-in) fails with
+tenantctl's error: run that command in a pane instead. Actions stop after 10 minutes.
 
 ## Install
 
@@ -107,9 +112,11 @@ where long values are cut at 60 characters.
 ## Privacy
 
 - Command output is read in Tern's host process and kept only to draw the view; it is never
-  written, logged or sent anywhere. No network requests, no processes, no files.
-- The changes outside the view are the `TENANTCTL_OUTPUT` variable in new shells and, when you
-  click an action, the command typed into that pane.
+  written, logged or sent anywhere. No network requests and no files besides the plugin's own
+  store; the only process it starts is tenantctl, when you click an action.
+- The changes outside the view are the `TENANTCTL_OUTPUT` variable in new shells and the actions
+  you click. Action links carry a secret only the plugin knows, so a link printed in a terminal
+  can't run anything.
 
 ## Development
 
@@ -120,7 +127,8 @@ bash scripts/check.sh    # format, lint, types, unit tests
 
 | Path | Role |
 |---|---|
-| `host.luau` | Host entry: the lens, the spawn hook and typing actions into panes (the only file that touches `tern`) |
+| `host.luau` | Host entry: the lens, the tenantctl block that runs actions, the spawn hook |
+| `window.luau` | Window entry: routes action links, asks for missing input, opens the block |
 | `lens/json.luau` | JSON decoder that keeps member order |
 | `lens/text.luau` | Reads tenantctl's table format and `--csv` |
 | `lens/output.luau` | One run's lines into a result, error or confirmation, plus notes |
@@ -128,6 +136,8 @@ bash scripts/check.sh    # format, lint, types, unit tests
 | `lens/records.luau` | What kind of record each part of a command's output is |
 | `lens/actions.luau` | The commands that act on a record and its relations, as command lines |
 | `lens/catalog.luau` | tenantctl's commands and their arguments (generated) |
+| `lens/run.luau` | An action's command line into the tenantctl argv to start, and its missing input filled in |
+| `lens/block.luau` | The tenantctl block's runs and their view |
 | `lens/render.luau` | The view |
 | `scripts/gen-fixtures.ts` | Renders `tests/fixtures/` with tenantctl's own output code |
 | `scripts/gen-catalog.ts` | Writes `lens/catalog.luau` from tenantctl's command registry |
