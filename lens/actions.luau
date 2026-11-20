@@ -1096,6 +1096,13 @@ local function rerunWith(inv: Invocation, old: string, new: string): string?
 	return if done then table.concat(parts, " ") else nil
 end
 
+-- The risk (`read`, `write`, `destructive`) of the command tenantctl `args` run, if known.
+local function riskOf(args: { string }): string?
+	local inv = invocation("tenantctl", args)
+	local c = if inv.id then byId[inv.id] else nil
+	return if c then c.risk else nil
+end
+
 return {
 	KINDS = KINDS,
 	quote = quote,
@@ -1106,4 +1113,5 @@ return {
 	targets = targets,
 	ambiguousArg = ambiguousArg,
 	rerunWith = rerunWith,
+	riskOf = riskOf,
 }

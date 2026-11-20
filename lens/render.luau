@@ -23,6 +23,8 @@ export type Opts = {
 	selected: { [string]: number? },
 	-- How the run started tenantctl; with it records get actions that run in the pane.
 	inv: actions.Invocation?,
+	-- Put before every selection path (`r2:data#3`), so several results in one view keep theirs apart.
+	prefix: string?,
 }
 
 -- Rows a table shows before "… N more"; the raw output keeps every row.
@@ -277,8 +279,12 @@ end
 
 local report: (ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, bar: Node?) -> { Node }
 
--- What an action sends: `run=<line>` runs the line in the pane, `fill=<line>` types it there for
--- the person to finish.
+-- The selection path of the part named `name` (`data`, `error`, `preview`) of this result.
+local function root(opts: Opts, name: string): string
+	return (opts.prefix or "") .. name
+end
+
+-- What an action's click sends: its line, and the input to ask for first if it needs any.
 local function act(a: Action): string
 	return (if a.fill then "fill=" else "run=") .. a.line
 end
@@ -599,7 +605,7 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 		consumed.verdict = true
 		local tone = verdictTone(items(findings), verdict)
 		table.insert(nodes, ui.text(ui.span(verdict, if tone then `{tone} strong` else "strong")))
-	elseif field(obj, "summary") and path == "data" then
+	elseif field(obj, "summary") and path == root(opts, "data") then
 		consumed.summary = true
 		table.insert(nodes, ui.text(ui.span(field(obj, "summary") :: string, "strong")))
 	end
@@ -723,7 +729,7 @@ local function successView(ui: UI, doc: Doc, opts: Opts): { Node }
 			table.insert(nodes, bar)
 		end
 		if isRowList(data) then
-			for _, n in tableView(ui, list, "data", opts, subject) do
+			for _, n in tableView(ui, list, root(opts, "data"), opts, subject) do
 				table.insert(nodes, n)
 			end
 		else
@@ -737,7 +743,7 @@ local function successView(ui: UI, doc: Doc, opts: Opts): { Node }
 		end
 		return nodes
 	end
-	return report(ui, data, "data", opts, subject, bar)
+	return report(ui, data, root(opts, "data"), opts, subject, bar)
 end
 
 -- An AMBIGUOUS error's candidates: the record kind its argument takes (a member list's rows say
@@ -791,7 +797,7 @@ local function errorView(ui: UI, doc: Doc, opts: Opts): { Node }
 	local details = doc.details
 	if details and isRowList(details) then
 		-- the candidates of an AMBIGUOUS error, or any list of records: a table to choose from
-		for _, n in tableView(ui, details.items :: { Value }, "error", opts, nil, pickOf(doc, opts)) do
+		for _, n in tableView(ui, details.items :: { Value }, root(opts, "error"), opts, nil, pickOf(doc, opts)) do
 			table.insert(body, n)
 		end
 	elseif details and details.kind == "array" then
@@ -799,7 +805,7 @@ local function errorView(ui: UI, doc: Doc, opts: Opts): { Node }
 			table.insert(body, ui.text(valueSpans(ui, "", item, opts.now)))
 		end
 	elseif details then
-		for _, n in report(ui, details, "error", opts) do
+		for _, n in report(ui, details, root(opts, "error"), opts) do
 			table.insert(body, n)
 		end
 	end
@@ -815,7 +821,7 @@ end
 local function confirmView(ui: UI, doc: Doc, opts: Opts): { Node }
 	local body: { Node } = {}
 	if doc.preview then
-		for _, n in report(ui, doc.preview, "preview", opts) do
+		for _, n in report(ui, doc.preview, root(opts, "preview"), opts) do
 			table.insert(body, n)
 		end
 	end
