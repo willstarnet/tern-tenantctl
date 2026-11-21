@@ -1,7 +1,7 @@
 schema = 1
 id = "tern-tenantctl"
 name = "Tern tenantctl"
-version = "0.2.0"
+version = "0.3.0"
 description = "Native views for tenantctl output: reports with ranked findings, tables with row details, readable errors."
 icon = "shield"
 host = "host.luau"
