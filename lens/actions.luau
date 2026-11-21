@@ -939,13 +939,61 @@ local function bind(
 	return bound, first, usedParent
 end
 
--- Commands whose flag makes them a second action on the record, offered right after the plain one.
-local VARIANTS: { [string]: { { flag: string, label: string, summary: string } } } = {
+-- Commands whose flag makes them a second action on the record, offered right after the plain one:
+-- the rarer but routine forms of a device task. `platforms` narrows a variant further than its
+-- command (tenantctl only honours the wipe flags on Windows).
+type Variant = { flag: string, label: string, summary: string, platforms: { string }? }
+local VARIANTS: { [string]: { Variant } } = {
 	["intune devices laps"] = {
 		{
 			flag = "--reveal",
 			label = "Reveal LAPS password",
 			summary = "Show the LAPS local admin password; every reveal is recorded in the Entra audit log",
+		},
+	},
+	["intune devices bitlocker-key"] = {
+		{
+			flag = "--reveal",
+			label = "Reveal BitLocker key",
+			summary = "Show the BitLocker recovery keys; every reveal is recorded in the Entra audit log",
+		},
+	},
+	["intune devices defender-scan"] = {
+		{
+			flag = "--full-scan",
+			label = "Defender full scan",
+			summary = "Start a Defender full scan instead of a quick one",
+		},
+	},
+	["intune devices wipe"] = {
+		{
+			flag = "--keep-enrollment-data",
+			label = "Wipe, keep enrollment",
+			summary = "Wipe the device but keep its enrollment and provisioning data",
+			platforms = { "windows" },
+		},
+		{
+			flag = "--keep-user-data",
+			label = "Wipe, keep user files",
+			summary = "Wipe the device but keep the user's files",
+			platforms = { "windows" },
+		},
+	},
+	["intune devices fresh-start"] = {
+		{
+			flag = "--keep-user-data",
+			label = "Fresh start, keep user files",
+			summary = "Fresh start that keeps user files",
+		},
+	},
+	["defender machines scan"] = {
+		{ flag = "--full-scan", label = "Full scan", summary = "Run a full antivirus scan instead of a quick one" },
+	},
+	["defender machines isolate"] = {
+		{
+			flag = "--selective",
+			label = "Isolate, keep Outlook and Teams",
+			summary = "Selective isolation: the machine is cut off except for Outlook and Teams",
 		},
 	},
 }
@@ -1114,7 +1162,13 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 			domain = DOMAINS[domain] or domain,
 		}, base)
 		-- the same command with a flag that makes it another action, listed right after it
-		for i, v in VARIANTS[c.id] or ({} :: { { flag: string, label: string, summary: string } }) do
+		for i, v in VARIANTS[c.id] or ({} :: { Variant }) do
+			if v.platforms and platform == nil then
+				platform = platformOf(subject.value)
+			end
+			if v.platforms and platform and not table.find(v.platforms, platform) then
+				continue
+			end
 			add({
 				label = v.label .. (if ask then "…" else ""),
 				line = `{line} {v.flag}`,
@@ -1204,6 +1258,81 @@ local function riskOf(args: { string }): string?
 	return if c then c.risk else nil
 end
 
+-- What a tenantctl command line does, read from its arguments (after the program): its command,
+-- the record it acts on (the kind and value of its first argument), the label its action has on
+-- that record (a variant's when its flag is there), its risk, and whether it approves a change
+-- (`--confirm <token>`).
+export type Described = {
+	id: string?,
+	kind: string?,
+	ref: string?,
+	label: string,
+	risk: string,
+	approval: boolean,
+}
+
+local function describe(args: { string }): Described
+	local inv = invocation("tenantctl", args)
+	local c = if inv.id then byId[inv.id] else nil
+	local approval = false
+	for _, a in args do
+		approval = approval or a == "--confirm" or string.sub(a, 1, 10) == "--confirm="
+	end
+	if c == nil then
+		-- the catalog lists every command that takes a record; the rest list or report
+		return { label = table.concat(args, " "), risk = "read", approval = approval }
+	end
+	local kind, arg = targetOf(c.id)
+	local ref = if arg then inv.values[arg] else nil
+	if kind == nil or ref == nil or ref == "" then
+		local label = format.label(table.concat(string.split(c.id, " "), "-"))
+		return { id = c.id, label = label, risk = c.risk, approval = approval }
+	end
+	local label = labelOf(c, kind, slotsOf(c))
+	for _, v in VARIANTS[c.id] or ({} :: { Variant }) do
+		if table.find(args, v.flag) then
+			label = v.label
+		end
+	end
+	return { id = c.id, kind = kind, ref = ref, label = label, risk = c.risk, approval = approval }
+end
+
+-- The command line that reads the record `ref` of `kind` whole (`intune devices get <ref>`), started
+-- the way `inv` was; nil when its kind has no such command.
+local function detailsLine(inv: Invocation, kind: string, ref: string): string?
+	local q = quote(ref)
+	if q == nil then
+		return nil
+	end
+	for _, c in catalog.commands do
+		local first = c.positional[1]
+		if c.risk == "read" and string.match(c.id, " get$") and first and homeOf(c.id, kind) then
+			local kinds = argKinds(c.id, first.name)
+			local others = #c.flags == 0
+			for i = 2, #c.positional do
+				others = others and not c.positional[i].required
+			end
+			if kinds and table.find(kinds, kind) and others then
+				return `{start(inv)} {c.id} {q}`
+			end
+		end
+	end
+	return nil
+end
+
+-- The command line `inv` ran, as typed.
+local function lineOf(inv: Invocation): string?
+	local parts: { string } = { inv.prefix }
+	for _, a in inv.args do
+		local q = quote(a)
+		if q == nil then
+			return nil
+		end
+		table.insert(parts, q)
+	end
+	return table.concat(parts, " ")
+end
+
 return {
 	KINDS = KINDS,
 	quote = quote,
@@ -1215,4 +1344,7 @@ return {
 	ambiguousArg = ambiguousArg,
 	rerunWith = rerunWith,
 	riskOf = riskOf,
+	describe = describe,
+	detailsLine = detailsLine,
+	lineOf = lineOf,
 }

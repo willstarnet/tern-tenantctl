@@ -190,6 +190,21 @@ describe("actions on a selected row", function()
 		expect(offer(iphone, "Reveal LAPS password")).toBeNil()
 	end)
 
+	it("offers the rarer forms of a device's routine tasks", function()
+		local windows = reachable("devices-list.json", DEVICES, { data = 1 })
+		expect((offer(windows, "Reveal BitLocker key", "Look up") :: Offer).act).toBe(
+			`run=tenantctl intune devices bitlocker-key {LAPTOP} --reveal`
+		)
+		expect((offer(windows, "Defender full scan", "Manage") :: Offer).act).toBe(
+			`run=tenantctl intune devices defender-scan {LAPTOP} --full-scan`
+		)
+		expect((offer(windows, "Wipe, keep user files", "Manage") :: Offer).variant).toBe("danger")
+		-- the wipe flags are Windows only
+		local mac = reachable("devices-list.json", DEVICES, { data = 3 })
+		expect(offer(mac, "Wipe")).notToBeNil()
+		expect(offer(mac, "Wipe, keep user files")).toBeNil()
+	end)
+
 	it("offers only what the device's platform supports", function()
 		local windows = reachable("devices-list.json", DEVICES, { data = 1 })
 		expect(offer(windows, "Rotate LAPS")).notToBeNil()

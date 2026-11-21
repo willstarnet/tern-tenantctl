@@ -6,6 +6,27 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The tenantctl panel is a workspace per record: the record opens read whole, in a tab of its
+  own, with its actions at the top (a button spins while its command runs). Lookups show in tabs
+  that refresh in place; changes go to the workspace's activity and the record is read again once
+  they are done. **Open** brings a listed record to the front; **Refresh** and **×** read it again
+  or close it. Workspaces survive a restart.
+- **Work on these** opens a list of records in the panel; **Pick several** there (or under any list
+  of records in the panel) runs one action on each picked row, four at a time, with each row's
+  outcome in a **Last action** column, one prompt for input they all need, and **Approve all**.
+- **Reveal BitLocker key**, **Defender full scan**, **Wipe, keep enrollment**, **Wipe, keep user
+  files** (Windows), **Fresh start, keep user files** on devices; **Full scan** and **Isolate, keep
+  Outlook and Teams** on Defender machines.
+- **Copy** next to revealed passwords and keys.
+
+### Changed
+
+- Picking an action from a panel in the tenantctl block closes the panel, so its result shows in
+  its place.
+- Approving a confirmation settles it: its **Approve** no longer stays offered.
+
 ## [0.3.0] - 2026-11-21
 
 ### Added
