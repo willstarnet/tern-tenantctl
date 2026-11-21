@@ -32,6 +32,8 @@ export type State = {
 	next: number,
 	-- selected row per table path, the path led by its run (`r3:data`)
 	selected: { [string]: number? },
+	-- open actions panel per record path, likewise
+	opened: { [string]: string? },
 }
 
 -- The outcome a finished process reports.
@@ -43,7 +45,7 @@ local MAX_RUNS = 20
 local MAX_SAVED = 256 * 1024
 
 local function new(): State
-	return { runs = {}, next = 1, selected = {} }
+	return { runs = {}, next = 1, selected = {}, opened = {} }
 end
 
 local function lines(text: string, into: { string })
@@ -151,9 +153,17 @@ end
 
 local function runView(ui: UI, state: State, r: Run, latest: boolean, now: number): Node
 	local spec = r.spec
-	local body: { Node } = {
-		with(ui.text(ui.span(r.line, "code")), { actions = { click = "copy" }, title = "Copy" }),
-	}
+	local key = `r{r.id}`
+	-- the command copies from the head; the head itself shows it without the program
+	local copy = ui.button("", {
+		key = "end",
+		icon = "copy",
+		variant = "quiet",
+		size = "sm",
+		title = "Copy command",
+		actions = { click = `copy={r.line}` },
+	})
+	local body: { Node } = { copy }
 	if r.status == "running" then
 		table.insert(body, ui.progress(nil, "Running"))
 		if spec and actions.riskOf(spec.args) == "destructive" then
@@ -163,7 +173,14 @@ local function runView(ui: UI, state: State, r: Run, latest: boolean, now: numbe
 			)
 		end
 	elseif r.doc then
-		local opts: render.Opts = { now = now, selected = state.selected, inv = r.inv, prefix = `r{r.id}:` }
+		local opts: render.Opts = {
+			now = now,
+			selected = state.selected,
+			opened = state.opened,
+			inv = r.inv,
+			prefix = `r{r.id}:`,
+			inline = true,
+		}
 		table.insert(body, render.render(ui, r.doc :: output.Doc, opts))
 	else
 		local text = string.gsub((r.err or "") .. "\n" .. (r.out or ""), "^%s+", "")
@@ -175,8 +192,9 @@ local function runView(ui: UI, state: State, r: Run, latest: boolean, now: numbe
 		ui.card(ui.span(head, "strong"), body, {
 			icon = ICONS[r.status],
 			meta = statusText(r),
+			["end"] = `main.{key}.end`,
 		}),
-		{ tone = TONES[r.status], collapsible = true, collapsed = not latest, key = `r{r.id}` }
+		{ tone = TONES[r.status], collapsible = true, collapsed = not latest, key = key }
 	)
 end
 

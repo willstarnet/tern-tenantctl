@@ -140,7 +140,9 @@ describe("render list", function()
 		local card = find(root, "card")[1]
 		expect(spanText((card.p :: any).head)).toBe("MAC-0007")
 		local items = (find(card, "kv")[1].p :: any).items
-		expect(spanText(items[#items].v)).toBe("no")
+		-- what the device is first, its id last
+		expect(spanText(items[1].k)).toBe("Device name")
+		expect(spanText(items[#items].v)).toBe("9c4f6e21-3a8b-4d70-b215-8e1f5c3d2b33")
 	end)
 
 	it("moves id-named columns last even when they aren't GUIDs", function()

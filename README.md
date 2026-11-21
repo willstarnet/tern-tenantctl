@@ -28,8 +28,9 @@ tenantctl entra users get jane                  # labeled fields, dates with the
   open a card with every field, including the ones the table had no room for; click it again to
   close it. "More results exist" shows when a list was cut.
 - **Actions** on every record: the card of a selected row, the record a report is about and the
-  records nested in it (a user's manager, a device's Entra object) carry buttons for every
-  tenantctl command that acts on them (see below).
+  records nested in it (a user's manager, a device's Entra object) lead with buttons for their
+  most used tenantctl commands, and open every other command that acts on them in a panel (see
+  below).
 - **Errors** as a card: the message, its code, the hint and the Graph request id. When a name
   matches several records, the candidates show as a table: **Use** runs the same command on that
   one by its id, and selecting a row gives it its actions.
@@ -44,32 +45,36 @@ Help, `--version` and output the lens can't read stay raw.
 ## Actions
 
 Select a device in `tenantctl intune devices list` (or under a user in `troubleshoot user`) and its
-card leads with **Sync**, **Restart**, **Rotate LAPS**, **Wipe** and the rest of its remote
-actions; select a user and you get **Revoke sessions**, **Reset password**, **Disable** and so
-on. Every tenantctl command that takes a record as its argument is offered on that record, for
-users, groups, Intune and Entra devices, Defender machines, Autopilot devices, apps, policies,
-incidents, alerts, mailboxes, inbox rules, sites, files, teams and more:
+card leads with **Sync**, **Troubleshoot**, **Restart** and **Rotate LAPS**; select a user and you
+get **Troubleshoot**, **Sign-ins**, **Revoke sessions** and **Reset password**. Every tenantctl
+command that takes a record as its argument is offered on that record, for users, groups, Intune
+and Entra devices, Defender machines, Autopilot devices, apps, policies, incidents, alerts,
+mailboxes, inbox rules, sites, files, teams and more:
 
-- the record's own changes are buttons, destructive ones in red;
-- **Look up** folds the commands that read more about it (details, compliance, sign-ins, …);
-- **More actions** folds its changes in other areas (a user's mailbox forwarding, OneDrive
-  access, …);
-- each related record gets a folded group of its own: a device's user, Entra object and Defender
-  machine, reached through the ids the row carries (Intune's `azureADDeviceId` names the Entra
-  device and the Defender machine);
-- a row listed under another record acts on the pair: a member of `entra groups members Sales`
-  gets **Remove member**, a trustee of `exchange permissions list` gets **Remove permissions**
-  with its access level, an inbox rule gets **Delete** on its mailbox. Adding what is already
-  there is not offered.
+- its most used commands lead as buttons, destructive ones in red;
+- **Look up** opens a panel of the commands that read more about it (details, compliance,
+  sign-ins, …), one column per area (Troubleshoot, Entra, Exchange, …), wrapping onto more lines
+  in a narrow pane; click it again to close it. A Windows device's panel also has **Reveal LAPS
+  password** next to **LAPS** (tenantctl records every reveal in the Entra audit log);
+- **Manage** opens the rest of its changes the same way, its own area first, then the others (a
+  user's mailbox forwarding, OneDrive access, …);
+- each related record gets a button that opens its panel: a device's user, Entra object and
+  Defender machine, reached through the ids the row carries (Intune's `azureADDeviceId` names the
+  Entra device and the Defender machine);
+- a row listed under another record acts on the pair, and that action leads: a member of
+  `entra groups members Sales` gets **Remove member**, a trustee of `exchange permissions list`
+  gets **Remove permissions** with its access level, an inbox rule gets **Delete** on its
+  mailbox. Adding what is already there is not offered.
 
 Commands that would do nothing are left out: **Enable** on an enabled account, **Lock** on a
 Windows device, **Rotate LAPS** on an iPhone.
 
 A click runs the action in the **tenantctl** block: a panel that opens below the pane the first
-time and collects every action you run from that tab, newest first. Each shows its command, a
-progress bar while it runs and then its result, drawn like any view with its own actions and a
-toast when it ends. Nothing is typed into your terminal. Actions run with the same program path
-and `--profile` as the command that printed the view, from your login shell's `PATH`.
+time and collects every action you run from that tab, newest first. Each is headed by its command
+(the copy button beside it copies the whole line), shows a progress bar while it runs and then its
+result, drawn like any view with its own actions and a toast when it ends. Nothing is typed into
+your terminal. Actions run with the same program path and `--profile` as the command that printed
+the view, from your login shell's `PATH`.
 
 A command that needs more input (**Rename…**, **Add license…**, a Defender action's
 `--comment`) asks for it first in a field over the pane. tenantctl's own safety still applies:

@@ -26,6 +26,10 @@ export type Opts = {
 	inv: actions.Invocation?,
 	-- Put before every selection path (`r2:data#3`), so several results in one view keep theirs apart.
 	prefix: string?,
+	-- Drawn inside a card (a run in the tenantctl block): errors and confirmations leave out their own.
+	inline: boolean?,
+	-- The open panel of each actions bar, by the path of its record (`data`, `r2:data#3`).
+	opened: { [string]: string? }?,
 }
 
 -- Rows a table shows before "… N more"; the raw output keeps every row.
@@ -299,79 +303,109 @@ local function actionButton(ui: UI, a: Action): Node
 	})
 end
 
-local function buttonRow(ui: UI, list: { Action }): Node
-	local buttons: { Node } = {}
-	for _, a in list do
-		table.insert(buttons, actionButton(ui, a))
-	end
-	return ui.node("row", { gap = "sm", wrap = true }, buttons)
-end
-
--- A folded group of actions headed by `head`, each area on its own line when they span several.
-local function actionSection(ui: UI, head: Spans, list: { Action }): Node
+-- A panel of actions: one column per area, side by side, wrapping onto more lines in a narrow
+-- pane. Each lists its actions top to bottom, destructive ones red.
+local function actionColumns(ui: UI, list: { Action }): Node
 	local areas: { string } = {}
-	local byArea: { [string]: { Action } } = {}
+	local byArea: { [string]: { Node } } = {}
 	for _, a in list do
 		if byArea[a.domain] == nil then
-			byArea[a.domain] = {}
+			byArea[a.domain] = { ui.text(ui.span(a.domain, "muted strong")) }
 			table.insert(areas, a.domain)
 		end
-		table.insert(byArea[a.domain], a)
+		table.insert(
+			byArea[a.domain],
+			ui.button(a.label, {
+				size = "sm",
+				variant = if a.risk == "destructive" then "danger" else "quiet",
+				title = a.summary,
+				actions = { click = act(a) },
+			})
+		)
 	end
-	local body: { Node } = {}
+	local cols: { Node } = {}
 	for _, area in areas do
-		if #areas > 1 then
-			table.insert(body, ui.text(ui.span(area, "muted")))
-		end
-		table.insert(body, buttonRow(ui, byArea[area]))
+		table.insert(cols, with(ui.col(byArea[area]), { gap = "xs", min = { w = "18ch" } }))
 	end
-	return fold(ui.section(head, body), true)
+	return ui.node("row", { gap = "lg", wrap = true, align = "start", role = "tenantctl.panel" }, cols)
 end
 
--- A record's actions: its own changes as buttons (the destructive ones red), then folded groups:
--- what to look up about it, its changes in other areas, and each related record's actions (its
--- user, its Defender machine, …).
-local function actionBar(ui: UI, targets: { Target }): Node?
-	local nodes: { Node } = {}
+-- The button that opens or closes one of a bar's panels; `opened` is the panel shown.
+local function panelButton(ui: UI, text: string, path: string, panel: string, opened: string?, title: string?): Node
+	local open = opened == panel
+	return ui.button(text, {
+		size = "sm",
+		icon = if open then "chev" else "chev-r",
+		on = open,
+		title = title,
+		actions = { click = `open={path}|{panel}` },
+	})
+end
+
+-- A record's actions: the few it leads with as buttons (destructive ones red), then buttons that
+-- open a panel of the rest, by area: what to look up about it, what to change, and each related
+-- record's actions (its user, its Defender machine, …). `path` keys which panel is open.
+local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts): Node?
+	local opened = if opts.opened then opts.opened[path] else nil
+	local buttons: { Node } = {}
+	local panel: Node? = nil
 	for _, t in targets do
 		if not t.own then
 			local kind = actions.KINDS[t.kind]
 			local name = if kind then kind.name else t.kind
-			table.insert(
-				nodes,
-				actionSection(ui, { ui.span(name, "strong"), ui.span(`  {t.ref}`, "muted") }, t.actions)
-			)
+			local id = `rel:{t.kind}`
+			table.insert(buttons, panelButton(ui, name, path, id, opened, `{name} {t.ref}`))
+			if opened == id then
+				panel = ui.col({
+					ui.text({ ui.span(name, "strong"), ui.span(`  {t.ref}`, "muted") }),
+					actionColumns(ui, t.actions),
+				})
+			end
 			continue
 		end
-		local reads: { Action } = {}
-		local buttons: { Action } = {}
-		local others: { Action } = {}
-		for _, a in t.actions do
-			table.insert(if a.risk == "read" then reads elseif a.home then buttons else others, a)
+		local featured: { [Action]: boolean } = {}
+		for _, a in t.featured do
+			featured[a] = true
+			table.insert(buttons, actionButton(ui, a))
 		end
-		if #buttons > 0 then
-			table.insert(nodes, buttonRow(ui, buttons))
+		local reads: { Action } = {}
+		local changes: { Action } = {}
+		for _, a in t.actions do
+			if not featured[a] then
+				table.insert(if a.risk == "read" then reads else changes, a)
+			end
 		end
 		if #reads > 0 then
-			table.insert(nodes, actionSection(ui, ui.span("Look up", "strong"), reads))
+			table.insert(buttons, panelButton(ui, "Look up", path, "lookup", opened))
+			if opened == "lookup" then
+				panel = actionColumns(ui, reads)
+			end
 		end
-		if #others > 0 then
-			table.insert(nodes, actionSection(ui, ui.span("More actions", "strong"), others))
+		if #changes > 0 then
+			table.insert(buttons, panelButton(ui, "Manage", path, "manage", opened))
+			if opened == "manage" then
+				panel = actionColumns(ui, changes)
+			end
 		end
 	end
-	if #nodes == 0 then
+	if #buttons == 0 then
 		return nil
+	end
+	local nodes: { Node } = { with(ui.row(buttons), { gap = "sm", wrap = true, align = "center" }) }
+	if panel then
+		table.insert(nodes, panel)
 	end
 	return with(ui.col(nodes), { role = "tenantctl.actions" })
 end
 
--- The actions bar of `subject`, listed under `parent`; nil without an invocation to run them with.
-local function barFor(ui: UI, opts: Opts, subject: Entity?, parent: Entity?): Node?
+-- The actions bar of `subject` at `path`, listed under `parent`; nil without an invocation to run
+-- them with.
+local function barFor(ui: UI, opts: Opts, path: string, subject: Entity?, parent: Entity?): Node?
 	local inv = opts.inv
 	if inv == nil or subject == nil then
 		return nil
 	end
-	return actionBar(ui, actions.targets(inv, subject, parent, inv.id))
+	return actionBar(ui, actions.targets(inv, subject, parent, inv.id), path, opts)
 end
 
 -- The record `v` at `path` is, when it is one; `strict` skips guessing from its fields.
@@ -450,8 +484,16 @@ local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, pare
 			nodes,
 			ui.card(
 				ui.span(name or `Row {selected}`, "strong"),
-				report(ui, row, `{path}#{selected}`, opts, entity or parent, barFor(ui, opts, entity, parent)),
-				{ meta = `{selected} of {#rows}` }
+				report(
+					ui,
+					row,
+					`{path}#{selected}`,
+					opts,
+					entity or parent,
+					barFor(ui, opts, `{path}#{selected}`, entity, parent)
+				),
+				-- in a run's card, no second ring
+				{ meta = `{selected} of {#rows}`, variant = if opts.inline then "bare" else nil }
 			)
 		)
 	end
@@ -494,14 +536,15 @@ local function findingNode(ui: UI, f: Value, opts: Opts): Node
 			lines,
 			with(
 				ui.row({
-					copyable(ui, nextCommand),
 					ui.button(if ask then "Run…" else "Run", {
 						size = "sm",
 						title = "Run it",
 						actions = { click = run.act(line, ask) },
 					}),
+					copyable(ui, nextCommand),
 				}),
-				{ align = "center" }
+				-- the button first, so a long command wraps under itself in a narrow pane
+				{ align = "start" }
 			)
 		)
 	elseif nextCommand then
@@ -509,9 +552,9 @@ local function findingNode(ui: UI, f: Value, opts: Opts): Node
 	end
 	local label = string.upper(sev)
 	label ..= string.rep(" ", math.max(0, 6 - #label))
-	return with(ui.row({ ui.text(ui.span(label, format.severityTone(sev) .. " strong")), ui.lines(lines) }), {
-		align = "start",
-	})
+	-- the severity keeps its width; the text beside it wraps
+	local sevNode = with(ui.text(ui.span(label, format.severityTone(sev) .. " strong")), { basis = "content" })
+	return with(ui.row({ sevNode, with(ui.lines(lines), { grow = 1, basis = 0 }) }), { align = "start" })
 end
 
 -- Findings ranked by severity: high and medium shown, low and info folded under them.
@@ -639,6 +682,8 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 	end
 
 	local pairs: { { Spans } } = {}
+	-- ids go last, as in tables: what the record is reads first
+	local idPairs: { { Spans } } = {}
 	local sections: { Node } = {}
 	for _, k in obj.keys :: { string } do
 		if consumed[k] or format.hidden(k) then
@@ -652,7 +697,10 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 			entity == nil
 			and (isScalar(v) or isSmallObject(v) or (v.kind == "array" and #(v.items :: { Value }) == 0))
 		then
-			table.insert(pairs, { format.label(k) :: Spans, valueSpans(ui, k, v, opts.now) })
+			local s = json.text(v)
+			local isId = (v.kind :: string) == "string"
+				and (k == "id" or string.match(k, "%lId$") ~= nil or format.isGuid(s or ""))
+			table.insert(if isId then idPairs else pairs, { format.label(k) :: Spans, valueSpans(ui, k, v, opts.now) })
 		elseif isRowList(v) then
 			local list = v.items :: { Value }
 			local section = ui.section(sectionHead(ui, k, #list), tableView(ui, list, childPath, opts, self))
@@ -666,10 +714,11 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 				table.insert(sections, fold(section, true))
 			end
 		else
-			local body = report(ui, v, childPath, opts, entity or self, barFor(ui, opts, entity, self))
+			local body = report(ui, v, childPath, opts, entity or self, barFor(ui, opts, childPath, entity, self))
 			table.insert(sections, fold(ui.section(sectionHead(ui, k), body), false))
 		end
 	end
+	table.move(idPairs, 1, #idPairs, #pairs + 1, pairs)
 	if #pairs > 0 then
 		table.insert(nodes, ui.kv(pairs))
 	end
@@ -718,7 +767,7 @@ end
 local function successView(ui: UI, doc: Doc, opts: Opts): { Node }
 	local data = doc.data or json.NULL
 	local subject = subjectOf(doc, opts)
-	local bar = barFor(ui, opts, subject, nil)
+	local bar = barFor(ui, opts, root(opts, "data"), subject, nil)
 	if data.kind == "array" then
 		local list = data.items :: { Value }
 		local nodes: { Node } = { listHead(ui, #list, doc.meta) }
@@ -783,6 +832,21 @@ local function pickOf(doc: Doc, opts: Opts): Pick?
 	}
 end
 
+-- An error or confirmation as its card; inside a run's card (`inline`) its head becomes the first
+-- line instead, so cards never nest.
+local function resultCard(ui: UI, opts: Opts, head: string, body: { Node }, props: { [string]: any }): { Node }
+	if not opts.inline then
+		return { ui.card(ui.span(head, "strong"), body, props) }
+	end
+	local spans: { Span } = { ui.span(head, `{props.tone} strong`) }
+	if props.meta then
+		table.insert(spans, ui.span(`  {props.meta}`, "muted"))
+	end
+	local out: { Node } = { ui.text(spans) }
+	table.move(body, 1, #body, 2, out)
+	return out
+end
+
 local function errorView(ui: UI, doc: Doc, opts: Opts): { Node }
 	local body: { Node } = {}
 	local pairs: { { Spans } } = {}
@@ -810,13 +874,7 @@ local function errorView(ui: UI, doc: Doc, opts: Opts): { Node }
 			table.insert(body, n)
 		end
 	end
-	return {
-		ui.card(ui.span(doc.message or "Error", "strong"), body, {
-			icon = "x-circle",
-			tone = "error",
-			meta = doc.code,
-		}),
-	}
+	return resultCard(ui, opts, doc.message or "Error", body, { icon = "x-circle", tone = "error", meta = doc.code })
 end
 
 local function confirmView(ui: UI, doc: Doc, opts: Opts): { Node }
@@ -827,11 +885,11 @@ local function confirmView(ui: UI, doc: Doc, opts: Opts): { Node }
 		end
 	end
 	if doc.rerun then
-		table.insert(body, ui.text(ui.span("Approve by running", "muted")))
-		table.insert(body, copyable(ui, doc.rerun))
+		local line: { Node } = { copyable(ui, doc.rerun) }
 		if opts.inv then
 			table.insert(
-				body,
+				line,
+				1,
 				ui.button("Approve", {
 					variant = "primary",
 					size = "sm",
@@ -840,15 +898,14 @@ local function confirmView(ui: UI, doc: Doc, opts: Opts): { Node }
 				})
 			)
 		end
+		table.insert(body, with(ui.row(line), { align = "start" }))
 	end
 	local expires = if doc.expiresAt then format.parseDate(doc.expiresAt) else nil
-	return {
-		ui.card(ui.span(`Confirm {doc.command or "change"}`, "strong"), body, {
-			icon = "shield-alert",
-			tone = "warning",
-			meta = if expires then `valid until {format.showDate(expires)}` else nil,
-		}),
-	}
+	return resultCard(ui, opts, `Confirm {doc.command or "change"}`, body, {
+		icon = "shield-alert",
+		tone = "warning",
+		meta = if expires then `valid until {format.showDate(expires)}` else nil,
+	})
 end
 
 local function notesView(ui: UI, notes: { string }): Node
