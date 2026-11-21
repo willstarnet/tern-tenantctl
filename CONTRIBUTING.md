@@ -43,13 +43,19 @@ downloads the published SDK's. Re-run it after upgrading Tern.
   part of a command's output is (`troubleshoot user`'s `devices` are Intune devices).
   `lens/actions.luau` says which kind each argument takes (`ARGS`) and which field of a record
   gives it (`REFS`): a new command that takes an existing kind needs nothing but the regenerated
-  catalog; a new kind of record needs an entry in each.
+  catalog; a new kind of record needs an entry in each. `FEATURED` there lists the commands a
+  kind leads with as buttons; everything else opens in its **Look up** and **Manage** panels.
+  `VARIANTS` offers a command again with a flag as an action of its own (**Reveal LAPS
+  password** is `intune devices laps --reveal`).
 - A view's buttons send `run=<command line>`, or `ask=<input>|<command line>` when the command
   needs more input. A lens can't redraw once its command has ended, so actions run elsewhere: the
   click opens a `tern-tenantctl://action/…` link carrying a secret from the plugin's store;
   `window.luau` checks it, asks for the input with `cx:prompt`, then sends the line to the tab's
   `action` block (or opens one), which starts tenantctl with `tern.process.run` and redraws when
   it ends. `lens/run.luau` turns the line back into argv and refuses anything but tenantctl.
+- **Look up**, **Manage** and a related record's button send `open=<record path>|<panel>`, which
+  the lens or block keeps in its state (`opened`) and draws as columns of buttons on its next
+  view. Tern's `menu` node would do, but it neither opens nor sends in a lens view.
 
 ## Tests
 

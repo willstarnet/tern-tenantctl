@@ -6,6 +6,23 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Reveal LAPS password** in a Windows device's **Look up** panel, next to **LAPS**: runs
+  `intune devices laps --reveal`. LAPS is no longer offered on devices that aren't Windows.
+
+### Changed
+
+- A record leads with its most used actions (a device's Sync, Troubleshoot, Restart and Rotate
+  LAPS; a user's Troubleshoot, Sign-ins, Revoke sessions and Reset password) instead of every
+  change it has. **Look up**, **Manage** and each related record open a panel with a column per
+  area that wraps in a narrow pane, in place of the folded groups of buttons.
+- Fields holding ids come last in a record's details, as in tables.
+- A finding's **Run** and a confirmation's **Approve** come before their command, and a finding's
+  severity keeps its width in a narrow pane.
+- In the tenantctl block a run is headed by its command, with a copy button, instead of repeating
+  it below; its error or confirmation shows inside the run's card, not as a card of its own.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

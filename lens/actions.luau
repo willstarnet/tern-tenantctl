@@ -29,8 +29,6 @@ export type Action = {
 	-- input the command still needs, asked for before it runs (see `run.complete`): `--name` (a
 	-- flag's value), `members` (a positional's), `*` (options the person types); nil when complete
 	ask: string?,
-	-- one of the record's own commands (`intune devices …` on a device), shown as a button
-	home: boolean,
 	summary: string,
 	domain: string,
 }
@@ -41,7 +39,10 @@ export type Target = {
 	ref: string,
 	-- the record itself, not one it relates to
 	own: boolean,
+	-- every action, troubleshooting first, then the record's own area, then the rest by area
 	actions: { Action },
+	-- the few it leads with (shown as buttons), in order; each is also in `actions`
+	featured: { Action },
 }
 
 -- How the run that printed the view started tenantctl, so actions start it the same way.
@@ -60,8 +61,8 @@ export type Invocation = {
 
 local ZERO_GUID = "00000000-0000-0000-0000-000000000000"
 
--- Kinds a record can be: the name shown for it and the command prefixes that are its own (their
--- writes show as buttons; other commands go in menus).
+-- Kinds a record can be: the name shown for it and the command prefixes that are its own (its
+-- area, listed right after troubleshooting).
 local KINDS: { [string]: { name: string, home: { string } } } = {
 	user = { name = "User", home = { "entra users", "entra risky-users" } },
 	["intune.device"] = { name = "Intune device", home = { "intune devices" } },
@@ -847,6 +848,7 @@ local PLATFORMS: { [string]: { string } } = {
 	["intune devices defender-update"] = { "windows" },
 	["intune devices rotate-bitlocker"] = { "windows" },
 	["intune devices rotate-laps"] = { "windows" },
+	["intune devices laps"] = { "windows" },
 	["intune devices collect-logs"] = { "windows" },
 	["intune devices fresh-start"] = { "windows" },
 	["intune devices rename"] = { "windows", "ios", "macos" },
@@ -937,6 +939,17 @@ local function bind(
 	return bound, first, usedParent
 end
 
+-- Commands whose flag makes them a second action on the record, offered right after the plain one.
+local VARIANTS: { [string]: { { flag: string, label: string, summary: string } } } = {
+	["intune devices laps"] = {
+		{
+			flag = "--reveal",
+			label = "Reveal LAPS password",
+			summary = "Show the LAPS local admin password; every reveal is recorded in the Entra audit log",
+		},
+	},
+}
+
 local RISK_ORDER: { [string]: number } = { read = 0, write = 1, destructive = 2 }
 local DOMAIN_ORDER: { [string]: number } = {
 	troubleshoot = 0,
@@ -952,6 +965,82 @@ local DOMAIN_ORDER: { [string]: number } = {
 -- Target-only kinds shown with the record they name.
 local SHOWN_AS: { [string]: string } = { ["defender.host"] = "defender.machine" }
 
+-- The commands a record leads with, most used first; the rest wait in its menus. A kind without
+-- a list leads with its first few troubleshooting and own-area actions that aren't destructive.
+local FEATURED: { [string]: { string } } = {
+	user = {
+		"troubleshoot user",
+		"entra users signins",
+		"entra users revoke-sessions",
+		"entra users reset-password",
+		"entra users devices",
+	},
+	["intune.device"] = {
+		"intune devices sync",
+		"troubleshoot device",
+		"intune devices restart",
+		"intune devices rotate-laps",
+		"intune devices compliance",
+	},
+	["entra.device"] = { "entra devices get", "entra devices disable", "entra devices enable" },
+	["defender.machine"] = {
+		"defender alerts for-device",
+		"defender machines scan",
+		"defender machines isolate",
+		"defender machines release",
+	},
+	["autopilot.device"] = { "intune autopilot get", "intune autopilot update" },
+	group = { "entra groups members", "entra groups add-member" },
+	["exchange.dl"] = { "exchange dl members", "exchange dl add-member" },
+	["entra.app"] = { "entra apps consents", "entra apps disable", "entra apps enable" },
+	["defender.incident"] = { "defender incidents get", "defender incidents update" },
+	["defender.alert"] = { "defender alerts get", "defender alerts update" },
+	team = { "teams members", "teams channels", "teams members add" },
+	["exchange.rule"] = { "exchange rules disable", "exchange rules delete" },
+	["quarantine.message"] = { "exchange quarantine release" },
+}
+local MAX_FEATURED = 4
+
+-- The actions `g` leads with: a change through the record it was listed under (remove this
+-- member: what the list is for) first, then its kind's featured commands, else its first few
+-- troubleshooting and own-area actions that aren't destructive.
+local function featuredOf(g: Target, ids: { [Action]: string }, paired: { [Action]: boolean }): { Action }
+	local out: { Action } = {}
+	local taken: { [Action]: boolean } = {}
+	local function take(a: Action)
+		if #out < MAX_FEATURED and not taken[a] then
+			taken[a] = true
+			table.insert(out, a)
+		end
+	end
+	for _, a in g.actions do
+		if paired[a] then
+			take(a)
+		end
+	end
+	local list = FEATURED[g.kind]
+	if list then
+		for _, id in list do
+			for _, a in g.actions do
+				if ids[a] == id then
+					take(a)
+				end
+			end
+		end
+		return out
+	end
+	for _, a in g.actions do
+		if #out >= MAX_FEATURED - 1 then
+			break
+		end
+		local own = a.domain == DOMAINS.troubleshoot or homeOf(ids[a], g.kind) ~= nil
+		if own and a.risk ~= "destructive" then
+			take(a)
+		end
+	end
+	return out
+end
+
 -- Every action on `subject`, grouped by the record each acts on: the subject first, then the
 -- records it relates to (its user, its Defender machine, …). `parent` is the record the subject
 -- was listed under (a member list's group, an inbox rule list's mailbox). `current` is the run's
@@ -960,6 +1049,8 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 	local groups: { [string]: Target } = {}
 	local order: { string } = {}
 	local rank: { [Action]: number } = {}
+	local ids: { [Action]: string } = {}
+	local paired: { [Action]: boolean } = {}
 	for index, c in catalog.commands do
 		local slots = slotsOf(c)
 		local bound, slot, usedParent = bind(c, slots, subject, parent, current)
@@ -999,27 +1090,40 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 			ask = FINISH[c.id]
 		end
 		local domain = string.match(c.id, "^%S+") :: string
-		local home = homeOf(c.id, kind)
-		local action: Action = {
+		-- troubleshooting first, then the record's own area, then the rest by area; reads first
+		local homeDomain = string.match((KINDS[kind] or { home = {} }).home[1] or "", "^%S+")
+		local area = if domain == "troubleshoot" then 0 elseif domain == homeDomain then 1 else 2
+		local base = area * 1e7 + (DOMAIN_ORDER[domain] or 9) * 1e5 + (RISK_ORDER[c.risk] or 0) * 1e4 + index
+		local shown = SHOWN_AS[kind] or kind
+		if groups[shown] == nil then
+			groups[shown] = { kind = shown, ref = ref, own = shown == subject.kind, actions = {}, featured = {} }
+			table.insert(order, shown)
+		end
+		local function add(action: Action, r: number)
+			ids[action] = c.id
+			paired[action] = slot ~= slots[1]
+			rank[action] = r
+			table.insert(groups[shown].actions, action)
+		end
+		add({
 			label = labelOf(c, kind, slots) .. (if ask then "…" else ""),
 			line = line :: string,
 			risk = c.risk,
 			ask = ask,
-			-- a change through the parent (remove this member) is what the list is for: a button
-			home = home ~= nil or slot ~= slots[1],
 			summary = c.summary,
 			domain = DOMAINS[domain] or domain,
-		}
-		-- troubleshooting first, then the record's own area, then the rest by area; reads first
-		local homeDomain = string.match((KINDS[kind] or { home = {} }).home[1] or "", "^%S+")
-		local area = if domain == "troubleshoot" then 0 elseif domain == homeDomain then 1 else 2
-		rank[action] = area * 1e7 + (DOMAIN_ORDER[domain] or 9) * 1e5 + (RISK_ORDER[c.risk] or 0) * 1e4 + index
-		local shown = SHOWN_AS[kind] or kind
-		if groups[shown] == nil then
-			groups[shown] = { kind = shown, ref = ref, own = shown == subject.kind, actions = {} }
-			table.insert(order, shown)
+		}, base)
+		-- the same command with a flag that makes it another action, listed right after it
+		for i, v in VARIANTS[c.id] or ({} :: { { flag: string, label: string, summary: string } }) do
+			add({
+				label = v.label .. (if ask then "…" else ""),
+				line = `{line} {v.flag}`,
+				risk = c.risk,
+				ask = ask,
+				summary = v.summary,
+				domain = DOMAINS[domain] or domain,
+			}, base + i / 10)
 		end
-		table.insert(groups[shown].actions, action)
 	end
 	local own: { Target } = {}
 	local related: { Target } = {}
@@ -1028,6 +1132,9 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 		table.sort(g.actions, function(a, b)
 			return rank[a] < rank[b]
 		end)
+		if g.own then
+			g.featured = featuredOf(g, ids, paired)
+		end
 		table.insert(if g.own then own else related, g)
 	end
 	table.move(related, 1, #related, #own + 1, own)

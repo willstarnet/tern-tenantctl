@@ -62,6 +62,8 @@ type LensState = {
 	inv: actions.Invocation?,
 	-- selected row per table path
 	selected: { [string]: number? },
+	-- open actions panel per record path
+	opened: { [string]: string? },
 }
 
 -- Toggles the selected row an event names (`data#3`, `r2:data.devices#1`).
@@ -73,6 +75,19 @@ local function toggleRow(selected: { [string]: number? }, ev: UiEvent)
 			selected[path] = if selected[path] == i then nil else i
 		end
 	end
+end
+
+-- Opens the actions panel an `open=<path>|<panel>` click names, or closes it when it is open.
+-- True when the event was one.
+local function togglePanel(opened: { [string]: string? }, ev: UiEvent): boolean
+	if ev.ev ~= "action" or ev.act ~= "open" or type(ev.value) ~= "string" then
+		return false
+	end
+	local path, panel = string.match(ev.value, "^(.*)|([^|]+)$")
+	if path and panel then
+		opened[path] = if opened[path] == panel then nil else panel
+	end
+	return true
 end
 
 local lens: LensDef<LensState> = {
@@ -91,6 +106,7 @@ local lens: LensDef<LensState> = {
 			doc = nil,
 			inv = nil,
 			selected = {},
+			opened = {},
 		}
 	end,
 
@@ -127,11 +143,17 @@ local lens: LensDef<LensState> = {
 		if doc == nil then
 			return nil
 		end
-		return render.render(tern.ui, doc, { now = os.time(), selected = state.selected, inv = state.inv })
+		return render.render(
+			tern.ui,
+			doc,
+			{ now = os.time(), selected = state.selected, opened = state.opened, inv = state.inv }
+		)
 	end,
 
 	event = function(state, ev, cx)
-		if ev.ev == "action" then
+		if togglePanel(state.opened, ev) then
+			return
+		elseif ev.ev == "action" then
 			local line, ask = run.parseAct(ev.act, ev.value)
 			if line then
 				cx:open(link(line, ask, state.cwd))
@@ -219,6 +241,12 @@ local block: BlockDef<runs.State> = {
 			if payload then
 				start(state, cx, payload.line, payload.cwd)
 			end
+			return
+		elseif ev.ev == "action" and ev.act == "copy" and type(ev.value) == "string" then
+			cx:copy(ev.value)
+			cx:toast("success", "Copied")
+			return
+		elseif togglePanel(state.opened, ev) then
 			return
 		elseif ev.ev == "action" then
 			local line, ask = run.parseAct(ev.act, ev.value)

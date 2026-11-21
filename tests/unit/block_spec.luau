@@ -42,6 +42,17 @@ describe("actions block", function()
 		expect(block.add(state, "sh -c 'echo hi'", nil).status).toBe("failed")
 	end)
 
+	it("draws a failed run's error inside its card, not as a second card", function()
+		local state = block.new()
+		local r = block.add(state, "tenantctl intune devices list", nil)
+		block.settle(r, result("error-forbidden.json", 4), 0.4)
+		local root = block.view(fake.ui, state, 0)
+		expect(#fake.find(root, "card")).toBe(1)
+		expect(fake.texts(root)).toContain("Insufficient privileges to complete the operation.  FORBIDDEN")
+		local copy = fake.find(root, "button")[1]
+		expect((copy.p :: any).actions.click).toBe("copy=tenantctl intune devices list")
+	end)
+
 	it("never starts a run again after a restart", function()
 		local state = block.new()
 		block.add(state, "tenantctl intune devices sync LAPTOP-0042", nil)
