@@ -115,10 +115,17 @@ local function space(state: State, key: string?): Workspace?
 	return nil
 end
 
+-- How a value naming a record is compared: names and addresses are case-insensitive in Entra and
+-- Intune (`laptop-0042` is `LAPTOP-0042`).
+local function alias(s: string): string
+	return string.lower(s)
+end
+
 -- The workspace of the record `ref` of `kind`, by any value that names it.
 local function spaceOf(state: State, kind: string, ref: string): Workspace?
+	local a = alias(ref)
 	for _, w in state.spaces do
-		if w.kind == kind and (w.ref == ref or w.aliases[ref]) then
+		if w.kind == kind and (alias(w.ref or "") == a or w.aliases[a]) then
 			return w
 		end
 	end
@@ -279,6 +286,58 @@ local function refresh(state: State, w: Workspace): Run?
 	return r
 end
 
+-- Folds every other workspace of the record `into` is (opened by one of the names it now knows:
+-- its id, its name) into it: their lookups' tabs (the newer result of a lookup both ran), their
+-- activity and their names. The one in front stays in front, as `into`.
+local function absorb(state: State, into: Workspace)
+	local i = 1
+	while i <= #state.spaces do
+		local w = state.spaces[i]
+		local same = false
+		if w ~= into and w.kind == into.kind then
+			same = into.aliases[alias(w.ref or "")] == true
+			for a in w.aliases do
+				same = same or into.aliases[a] == true
+			end
+		end
+		if not same then
+			i += 1
+			continue
+		end
+		for _, t in w.tabs do
+			local mine: { label: string, run: number }? = nil
+			for _, m in into.tabs do
+				if m.label == t.label then
+					mine = m
+				end
+			end
+			if mine == nil then
+				table.insert(into.tabs, { label = t.label, run = t.run })
+			elseif t.label ~= DETAILS and t.run > mine.run then
+				mine.run = t.run
+			end
+		end
+		for _, e in w.activity do
+			table.insert(into.activity, e)
+		end
+		table.sort(into.activity, function(a, b)
+			return a.id > b.id
+		end)
+		while #into.activity > MAX_ENTRIES do
+			table.remove(into.activity)
+		end
+		for a in w.aliases do
+			into.aliases[a] = true
+		end
+		if state.current == w.key then
+			state.current = into.key
+			into.tab = w.tab or into.tab
+		end
+		table.remove(state.spaces, i)
+	end
+	prune(state)
+end
+
 -- Approving a change (`--confirm <token>` run as `line`) settles the confirmation that asked for it.
 local function approved(state: State, line: string)
 	for _, r in state.runs do
@@ -347,7 +406,7 @@ local function submit(state: State, line: string, cwd: string?, from: string?): 
 				key = key,
 				kind = kind,
 				ref = ref,
-				aliases = { [ref] = true },
+				aliases = { [alias(ref)] = true },
 				name = ref,
 				line = line,
 				cwd = cwd,
@@ -530,19 +589,25 @@ local function settle(state: State, r: Run, res: Result, took: number): { Run }
 		r.status = "failed"
 	end
 	local follow: { Run } = {}
+	local named: { Workspace } = {}
 	for _, w in state.spaces do
 		if w.details == r.id and r.status == "done" then
 			local entity = entityOf(state, w)
 			local value = if entity then entity.value else nil
 			if value and w.kind then
 				w.name = render.titleOf(value) or w.name
-				w.aliases[w.name] = true
+				w.aliases[alias(w.name)] = true
 				local canonical = actions.refFor(w.kind :: string, { kind = w.kind :: string, value = value })
 				if canonical then
-					w.aliases[canonical] = true
+					w.aliases[alias(canonical)] = true
 				end
+				table.insert(named, w)
 			end
 		end
+	end
+	-- a workspace opened by another of the names it now has (its id, its name) is the same record
+	for _, w in named do
+		absorb(state, w)
 	end
 	-- a change is done: read its record again, unless more of its batch are still going
 	if r.status == "done" and r.risk ~= "read" and r.row == nil then
@@ -1025,7 +1090,7 @@ local function restore(saved: any): State
 		if type(s) == "table" and type(s.key) == "string" and type(s.line) == "string" then
 			local aliases: { [string]: boolean } = {}
 			for _, a in if type(s.aliases) == "table" then s.aliases else {} do
-				aliases[tostring(a)] = true
+				aliases[alias(tostring(a))] = true
 			end
 			table.insert(state.spaces, {
 				key = s.key,

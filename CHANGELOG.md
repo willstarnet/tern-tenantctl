@@ -6,6 +6,12 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A record opened in the tenantctl panel by one name and by another (a device by its name and by
+  its id) no longer keeps two workspaces: once either is read, they merge into one with the tabs
+  and activity of both. Names are matched without regard to case.
+
 ## [0.4.0] - 2026-11-21
 
 ### Added

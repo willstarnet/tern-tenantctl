@@ -97,6 +97,33 @@ describe("workspace", function()
 		expect({ block.summary(state, started[2]) }).toEqual({ "success", "Sync done" })
 	end)
 
+	it("keeps a record opened by name and by id in one workspace", function()
+		local state = block.new()
+		-- by name, then by id, before either has been read
+		local byName = block.submit(state, "tenantctl intune devices sync LAPTOP-0042", nil, nil)
+		local byId = block.submit(state, `tenantctl intune devices laps {LAPTOP} --reveal`, nil, nil)
+		expect(#state.spaces).toBe(2)
+		-- reading it by id tells its name too: the two are one
+		block.settle(state, byId[1], ok(LAPTOP_JSON), 0.3)
+		expect(#state.spaces).toBe(1)
+		local w = block.space(state, state.current) :: block.Workspace
+		expect(w.name).toBe("LAPTOP-0042")
+		expect(w.activity[1].label).toBe("Sync")
+		local labels = {}
+		for _, tab in w.tabs do
+			table.insert(labels, tab.label)
+		end
+		expect(labels).toEqual({ "Details", "Reveal LAPS password" })
+		-- the name workspace's own read ends without opening it again
+		block.settle(state, byName[1], ok(LAPTOP_JSON), 0.3)
+		expect(#state.spaces).toBe(1)
+		-- any spelling of either name lands there
+		block.submit(state, "tenantctl intune devices restart laptop-0042", nil, nil)
+		block.submit(state, `tenantctl intune devices rotate-laps {LAPTOP}`, nil, nil)
+		expect(#state.spaces).toBe(1)
+		expect(#w.activity).toBe(3)
+	end)
+
 	it("keeps a change to a related record in the workspace it was made from", function()
 		local state = block.new()
 		local first = block.submit(state, `tenantctl intune devices get {LAPTOP}`, nil, nil)
