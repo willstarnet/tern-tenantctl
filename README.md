@@ -54,8 +54,7 @@ mailboxes, inbox rules, sites, files, teams and more:
 - its most used commands lead as buttons, destructive ones in red;
 - **Look up** opens a panel of the commands that read more about it (details, compliance,
   sign-ins, …), one column per area (Troubleshoot, Entra, Exchange, …), wrapping onto more lines
-  in a narrow pane; click it again to close it. A Windows device's panel also has **Reveal LAPS
-  password** next to **LAPS** (tenantctl records every reveal in the Entra audit log);
+  in a narrow pane; click it again to close it;
 - **Manage** opens the rest of its changes the same way, its own area first, then the others (a
   user's mailbox forwarding, OneDrive access, …);
 - each related record gets a button that opens its panel: a device's user, Entra object and
@@ -67,21 +66,46 @@ mailboxes, inbox rules, sites, files, teams and more:
   mailbox. Adding what is already there is not offered.
 
 Commands that would do nothing are left out: **Enable** on an enabled account, **Lock** on a
-Windows device, **Rotate LAPS** on an iPhone.
+Windows device, **Rotate LAPS** on an iPhone. A device also gets the rarer forms of its routine
+tasks next to the plain ones: **Reveal LAPS password** and **Reveal BitLocker key** (tenantctl
+records every reveal in the Entra audit log; revealed passwords and keys get a **Copy** button),
+**Defender full scan**, **Wipe, keep enrollment** and **Wipe, keep user files** (Windows),
+**Fresh start, keep user files**; a Defender machine gets **Full scan** and **Isolate, keep
+Outlook and Teams**.
 
-A click runs the action in the **tenantctl** block: a panel that opens below the pane the first
-time and collects every action you run from that tab, newest first. Each is headed by its command
-(the copy button beside it copies the whole line), shows a progress bar while it runs and then its
-result, drawn like any view with its own actions and a toast when it ends. Nothing is typed into
-your terminal. Actions run with the same program path and `--profile` as the command that printed
-the view, from your login shell's `PATH`.
+### The tenantctl panel
+
+A click runs the action in the **tenantctl** block, a panel that opens below the pane the first
+time. Nothing is typed into your terminal. The panel is a workspace per record you work on:
+
+- The record opens in its own tab, read whole first (`intune devices get`, `entra users get`), with
+  its actions at the top; a button spins while its command runs.
+- A lookup (**Compliance**, **Reveal LAPS password**, …) shows its result in a tab of its own under
+  the actions; running it again refreshes that tab in place.
+- A change (**Sync**, **Restart**, …) goes to the workspace's activity, newest first and open,
+  with its command (copyable) and result; once it is done the record is read again, so what the
+  workspace shows stays current. A change to a related record (the device's user) stays in the
+  activity of the record you are working on; a lookup of one opens it in a tab of its own.
+- A record listed in a result gets **Open**, which makes it the workspace in front. **Refresh**
+  reads the record again; **×** closes its workspace.
+- **Work on these** over a list of records in the terminal (`intune devices list`) opens the
+  list as a workspace too. There, and under any list of records in the panel, **Pick several**
+  turns on checkboxes: pick the rows (shift-click picks a range, Esc clears), then choose an
+  action under the table to run it on each picked row, four at a time. A row without that action
+  (Rotate LAPS on an iPhone) is skipped, a **Last action** column says how each row went, and the
+  activity entry sums it up, with **Approve all** when tenantctl asks to confirm.
+
+Actions run with the same program path and `--profile` as the command that printed the view, from
+your login shell's `PATH`. The workspaces survive a restart; an action that was still running then
+shows as interrupted and is never run again.
 
 A command that needs more input (**Rename…**, **Add license…**, a Defender action's
-`--comment`) asks for it first in a field over the pane. tenantctl's own safety still applies:
-writes need writes enabled, and destructive commands ask for your approval in tenantctl's
-dialog; with `confirmMode token` the result is a confirmation card whose **Approve** runs it. An
-action that needs a terminal (a `tty` approval prompt, a device-code sign-in) fails with
-tenantctl's error: run that command in a pane instead. Actions stop after 10 minutes.
+`--comment`) asks for it first in a field over the pane; on picked rows it asks once for all of
+them. tenantctl's own safety still applies: writes need writes enabled, and destructive commands
+ask for your approval in tenantctl's dialog; with `confirmMode token` the result is a confirmation
+whose **Approve** runs it. An action that needs a terminal (a `tty` approval prompt, a device-code
+sign-in) fails with tenantctl's error: run that command in a pane instead. Actions stop after 10
+minutes.
 
 ## Install
 
@@ -142,7 +166,7 @@ bash scripts/check.sh    # format, lint, types, unit tests
 | `lens/actions.luau` | The commands that act on a record and its relations, as command lines |
 | `lens/catalog.luau` | tenantctl's commands and their arguments (generated) |
 | `lens/run.luau` | An action's command line into the tenantctl argv to start, and its missing input filled in |
-| `lens/block.luau` | The tenantctl block's runs and their view |
+| `lens/block.luau` | The tenantctl block's workspaces: records, their tabs and activity, runs on picked rows |
 | `lens/render.luau` | The view |
 | `scripts/gen-fixtures.ts` | Renders `tests/fixtures/` with tenantctl's own output code |
 | `scripts/gen-catalog.ts` | Writes `lens/catalog.luau` from tenantctl's command registry |

@@ -50,12 +50,22 @@ downloads the published SDK's. Re-run it after upgrading Tern.
 - A view's buttons send `run=<command line>`, or `ask=<input>|<command line>` when the command
   needs more input. A lens can't redraw once its command has ended, so actions run elsewhere: the
   click opens a `tern-tenantctl://action/…` link carrying a secret from the plugin's store;
-  `window.luau` checks it, asks for the input with `cx:prompt`, then sends the line to the tab's
-  `action` block (or opens one), which starts tenantctl with `tern.process.run` and redraws when
-  it ends. `lens/run.luau` turns the line back into argv and refuses anything but tenantctl.
+  `window.luau` checks it, asks for the input with `cx:prompt` (a block's `cx` has no prompt, so
+  the block's own asks take the same route, with `from`, the workspace they were clicked in, and
+  for picked rows a `batch` of lines that one answer completes), then sends the line to the tab's
+  `action` block (or opens one). `lens/run.luau` turns the line back into argv and refuses
+  anything but tenantctl.
+- `lens/block.luau` keeps the block's state: a workspace per record (`kind|ref`, also found by the
+  aliases its details give it) or per command about no record, each with its lookups' tabs and its
+  activity. `submit` files a line (`actions.describe` says which record it acts on, its label and
+  risk) and returns the runs to start; `settle` records how one ended and returns what follows
+  (the record read again after a change). `host.luau` starts the processes, a few at a time for
+  picked rows (`due`).
 - **Look up**, **Manage** and a related record's button send `open=<record path>|<panel>`, which
   the lens or block keeps in its state (`opened`) and draws as columns of buttons on its next
-  view. Tern's `menu` node would do, but it neither opens nor sends in a lens view.
+  view. Tern's `menu` node would do, but it neither opens nor sends in a lens view. In the block,
+  `pick=<table path>` switches a table to picking several rows (`multi`), its `change` events
+  carry the picks, and `bulk=<table path>|<label>` runs that action on each.
 
 ## Tests
 

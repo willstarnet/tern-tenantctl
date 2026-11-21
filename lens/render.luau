@@ -30,7 +30,19 @@ export type Opts = {
 	inline: boolean?,
 	-- The open panel of each actions bar, by the path of its record (`data`, `r2:data#3`).
 	opened: { [string]: string? }?,
+	-- Drawn in the tenantctl block's workspace: listed records get Open and can be picked several
+	-- at a time; the record the result is about has its actions in the workspace's head instead.
+	workspace: boolean?,
+	-- Command lines running now: their buttons spin.
+	busy: { [string]: boolean }?,
+	-- Tables picking several rows, by path, and the row ids picked in each.
+	picking: { [string]: boolean }?,
+	picked: { [string]: { string } }?,
+	-- How the last action run on several rows went for each row, by row id (`r4:data#2`).
+	marks: { [string]: Mark }?,
 }
+
+export type Mark = { text: string, tone: string?, title: string? }
 
 -- Rows a table shows before "… N more"; the raw output keeps every row.
 local MAX_ROWS = 500
@@ -294,18 +306,28 @@ local function act(a: Action): string
 	return run.act(a.line, a.ask)
 end
 
-local function actionButton(ui: UI, a: Action): Node
+-- How a bar's buttons click: `act` for one record; for the rows picked in a table, `bulk=` with the
+-- table and the action's label, so each row runs its own line.
+type BarStyle = { actOf: (a: Action) -> string, bulk: boolean }
+local ONE: BarStyle = { actOf = act, bulk = false }
+
+local function isBusy(opts: Opts, a: Action, style: BarStyle): boolean
+	return not style.bulk and opts.busy ~= nil and opts.busy[a.line] == true
+end
+
+local function actionButton(ui: UI, a: Action, opts: Opts, style: BarStyle): Node
 	return ui.button(a.label, {
 		size = "sm",
 		variant = if a.risk == "destructive" then "danger" else "default",
 		title = a.summary,
-		actions = { click = act(a) },
+		busy = isBusy(opts, a, style),
+		actions = { click = style.actOf(a) },
 	})
 end
 
 -- A panel of actions: one column per area, side by side, wrapping onto more lines in a narrow
 -- pane. Each lists its actions top to bottom, destructive ones red.
-local function actionColumns(ui: UI, list: { Action }): Node
+local function actionColumns(ui: UI, list: { Action }, opts: Opts, style: BarStyle): Node
 	local areas: { string } = {}
 	local byArea: { [string]: { Node } } = {}
 	for _, a in list do
@@ -319,7 +341,8 @@ local function actionColumns(ui: UI, list: { Action }): Node
 				size = "sm",
 				variant = if a.risk == "destructive" then "danger" else "quiet",
 				title = a.summary,
-				actions = { click = act(a) },
+				busy = isBusy(opts, a, style),
+				actions = { click = style.actOf(a) },
 			})
 		)
 	end
@@ -344,13 +367,21 @@ end
 
 -- A record's actions: the few it leads with as buttons (destructive ones red), then buttons that
 -- open a panel of the rest, by area: what to look up about it, what to change, and each related
--- record's actions (its user, its Defender machine, …). `path` keys which panel is open.
-local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts): Node?
+-- record's actions (its user, its Defender machine, …). `path` keys which panel is open. `lead` goes
+-- first (Open, in the tenantctl block). A bulk bar keeps to the record's own actions, and leaves
+-- out those whose input differs per record (a new name).
+local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts, style: BarStyle, lead: Node?): Node?
 	local opened = if opts.opened then opts.opened[path] else nil
 	local buttons: { Node } = {}
+	if lead then
+		table.insert(buttons, lead)
+	end
 	local panel: Node? = nil
 	for _, t in targets do
 		if not t.own then
+			if style.bulk then
+				continue
+			end
 			local kind = actions.KINDS[t.kind]
 			local name = if kind then kind.name else t.kind
 			local id = `rel:{t.kind}`
@@ -358,7 +389,7 @@ local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts):
 			if opened == id then
 				panel = ui.col({
 					ui.text({ ui.span(name, "strong"), ui.span(`  {t.ref}`, "muted") }),
-					actionColumns(ui, t.actions),
+					actionColumns(ui, t.actions, opts, style),
 				})
 			end
 			continue
@@ -366,25 +397,27 @@ local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts):
 		local featured: { [Action]: boolean } = {}
 		for _, a in t.featured do
 			featured[a] = true
-			table.insert(buttons, actionButton(ui, a))
+			if not (style.bulk and a.ask == "--name") then
+				table.insert(buttons, actionButton(ui, a, opts, style))
+			end
 		end
 		local reads: { Action } = {}
 		local changes: { Action } = {}
 		for _, a in t.actions do
-			if not featured[a] then
+			if not featured[a] and not (style.bulk and a.ask == "--name") then
 				table.insert(if a.risk == "read" then reads else changes, a)
 			end
 		end
 		if #reads > 0 then
 			table.insert(buttons, panelButton(ui, "Look up", path, "lookup", opened))
 			if opened == "lookup" then
-				panel = actionColumns(ui, reads)
+				panel = actionColumns(ui, reads, opts, style)
 			end
 		end
 		if #changes > 0 then
 			table.insert(buttons, panelButton(ui, "Manage", path, "manage", opened))
 			if opened == "manage" then
-				panel = actionColumns(ui, changes)
+				panel = actionColumns(ui, changes, opts, style)
 			end
 		end
 	end
@@ -398,6 +431,23 @@ local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts):
 	return with(ui.col(nodes), { role = "tenantctl.actions" })
 end
 
+-- In the tenantctl block, a record listed in a result opens as its own workspace.
+local function openButton(ui: UI, opts: Opts, targets: { Target }): Node?
+	local own = targets[1]
+	local inv = opts.inv
+	if not opts.workspace or inv == nil or own == nil or not own.own then
+		return nil
+	end
+	local line = actions.detailsLine(inv, own.kind, own.ref)
+	if line == nil then
+		return nil
+	end
+	return ui.button(
+		"Open",
+		{ size = "sm", variant = "primary", title = "Work on it here", actions = { click = run.act(line) } }
+	)
+end
+
 -- The actions bar of `subject` at `path`, listed under `parent`; nil without an invocation to run
 -- them with.
 local function barFor(ui: UI, opts: Opts, path: string, subject: Entity?, parent: Entity?): Node?
@@ -405,7 +455,8 @@ local function barFor(ui: UI, opts: Opts, path: string, subject: Entity?, parent
 	if inv == nil or subject == nil then
 		return nil
 	end
-	return actionBar(ui, actions.targets(inv, subject, parent, inv.id), path, opts)
+	local targets = actions.targets(inv, subject, parent, inv.id)
+	return actionBar(ui, targets, path, opts, ONE, openButton(ui, opts, targets))
 end
 
 -- The record `v` at `path` is, when it is one; `strict` skips guessing from its fields.
@@ -419,11 +470,46 @@ end
 -- command line that runs the failed command again on it.
 type Pick = { kind: (row: Value) -> string?, line: (row: Value) -> string? }
 
+-- Fields holding a secret a person reveals to use elsewhere (a LAPS password, a BitLocker key): a
+-- Copy button follows them.
+local SECRET: { [string]: boolean } = { password = true, key = true, recoveryKey = true, secret = true }
+
+-- The actions bar for the rows picked in a table at `path`: the first picked row's own actions,
+-- each click running it on every picked row.
+local function bulkBar(ui: UI, rows: { Value }, path: string, opts: Opts, parent: Entity?): Node?
+	local inv = opts.inv
+	local picked = if opts.picked then opts.picked[path] else nil
+	if inv == nil or picked == nil or #picked == 0 then
+		return nil
+	end
+	local index = tonumber(string.match(picked[1], "#(%d+)$") or "")
+	local row = if index then rows[index] else nil
+	local entity = if row then entityAt(opts, path, row) else nil
+	if entity == nil then
+		return nil
+	end
+	local style: BarStyle = {
+		bulk = true,
+		actOf = function(a: Action): string
+			return `bulk={path}|{a.label}`
+		end,
+	}
+	local bar = actionBar(ui, actions.targets(inv, entity, parent, nil), `{path}!bulk`, opts, style)
+	if bar == nil then
+		return nil
+	end
+	local n = #picked
+	return ui.col({ ui.text(ui.span(`Run on the {n} picked row{if n == 1 then "" else "s"}`, "muted")), bar })
+end
+
 -- A list of objects as a selectable table; a selected row opens its detail card below, led by its
 -- actions. `parent` is the record the list belongs to; with `pick`, each row also gets a Use button.
+-- In the tenantctl block a list of records can switch to picking several rows, to run one action
+-- on all of them; each row then shows how its last such run went.
 local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, parent: Entity?, pick: Pick?): { Node }
 	local cols, title = columnsOf(rows)
 	local specs: { Col } = {}
+	local secrets: { [number]: boolean } = {}
 	for i, c in cols do
 		local spec: Col = { id = c.key, head = format.label(c.key) }
 		if c.key == title then
@@ -442,7 +528,22 @@ local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, pare
 		elseif c.date then
 			spec.mono = true
 		end
-		specs[i] = spec
+		secrets[i] = SECRET[c.key] == true
+		if secrets[i] then
+			spec.mono = true
+			spec.priority = 95
+		end
+		table.insert(specs, spec)
+		if secrets[i] then
+			table.insert(specs, { id = `{c.key}.copy`, head = "", priority = 94 })
+		end
+	end
+	local marked = false
+	for i = 1, math.min(#rows, MAX_ROWS) do
+		marked = marked or (opts.marks ~= nil and opts.marks[`{path}#{i}`] ~= nil)
+	end
+	if marked then
+		table.insert(specs, if title then 2 else 1, { id = "mark", head = "Last action", priority = 90 })
 	end
 	if pick then
 		table.insert(specs, 1, { id = "use", head = "", priority = 200 })
@@ -450,10 +551,26 @@ local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, pare
 	local tableRows: { TableRow } = {}
 	for i = 1, math.min(#rows, MAX_ROWS) do
 		local row = rows[i]
+		local id = `{path}#{i}`
 		local cells: { Cell } = {}
 		for j, c in cols do
 			local v = json.get(row, c.key)
-			cells[j] = if v then cellOf(ui, c.key, v, opts.now) else ""
+			table.insert(cells, if v then cellOf(ui, c.key, v, opts.now) else "")
+			if secrets[j] then
+				local s = json.text(v)
+				table.insert(
+					cells,
+					if s and s ~= "" then { button = { text = "Copy", icon = "copy", act = `copy={s}` } } else ""
+				)
+			end
+		end
+		if marked then
+			local mark = if opts.marks then opts.marks[id] else nil
+			table.insert(
+				cells,
+				if title then 2 else 1,
+				if mark then { badge = { text = mark.text, tone = mark.tone, title = mark.title } } else ""
+			)
 		end
 		if pick then
 			local line = pick.line(row)
@@ -463,17 +580,47 @@ local function tableView(ui: UI, rows: { Value }, path: string, opts: Opts, pare
 				if line then { button = { text = "Use", act = run.act(line), variant = "primary" } } else ""
 			)
 		end
-		tableRows[i] = { id = `{path}#{i}`, cells = cells }
+		tableRows[i] = { id = id, cells = cells }
 	end
-	local selected = opts.selected[path]
-	local nodes: { Node } = {
-		ui.table(specs, tableRows, {
-			selectable = true,
-			selected = if selected then `{path}#{selected}` else nil,
-		}),
-	}
+	-- picking several rows: offered in the block, for rows that are records
+	local canPick = opts.workspace == true and pick == nil and rows[1] ~= nil and entityAt(opts, path, rows[1]) ~= nil
+	local picking = canPick and opts.picking ~= nil and opts.picking[path] == true
+	local selected = if picking then nil else opts.selected[path]
+	local tbl = ui.table(specs, tableRows, {
+		selectable = true,
+		selected = if selected then `{path}#{selected}` else nil,
+	})
+	local nodes: { Node } = {}
+	if canPick then
+		table.insert(
+			nodes,
+			ui.button(if picking then "Done picking" else "Pick several", {
+				size = "sm",
+				variant = "quiet",
+				icon = "list-checks",
+				on = picking,
+				title = "Run one action on several rows",
+				actions = { click = `pick={path}` },
+			})
+		)
+	end
+	if picking then
+		local p = tbl.p :: { [string]: any }
+		p.multi = true
+		p.picked = if opts.picked then opts.picked[path] or {} else {}
+		p.bar = {}
+		p.hint = "Esc clears"
+	end
+	table.insert(nodes, tbl)
 	if #rows > MAX_ROWS then
 		table.insert(nodes, ui.overflow(#rows - MAX_ROWS))
+	end
+	if picking then
+		local bar = bulkBar(ui, rows, path, opts, parent)
+		if bar then
+			table.insert(nodes, bar)
+		end
+		return nodes
 	end
 	local row = if selected then rows[selected] else nil
 	if row then
@@ -684,6 +831,8 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 	local pairs: { { Spans } } = {}
 	-- ids go last, as in tables: what the record is reads first
 	local idPairs: { { Spans } } = {}
+	-- secrets (a password, a key) also get a line with a Copy button
+	local secretRows: { Node } = {}
 	local sections: { Node } = {}
 	for _, k in obj.keys :: { string } do
 		if consumed[k] or format.hidden(k) then
@@ -701,6 +850,18 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 			local isId = (v.kind :: string) == "string"
 				and (k == "id" or string.match(k, "%lId$") ~= nil or format.isGuid(s or ""))
 			table.insert(if isId then idPairs else pairs, { format.label(k) :: Spans, valueSpans(ui, k, v, opts.now) })
+			if SECRET[k] and s and s ~= "" then
+				table.insert(
+					secretRows,
+					with(
+						ui.row({
+							ui.button("Copy", { size = "sm", icon = "copy", actions = { click = `copy={s}` } }),
+							ui.text({ ui.span(format.label(k), "muted"), ui.span(`  {s}`, "mono") }),
+						}),
+						{ align = "center" }
+					)
+				)
+			end
 		elseif isRowList(v) then
 			local list = v.items :: { Value }
 			local section = ui.section(sectionHead(ui, k, #list), tableView(ui, list, childPath, opts, self))
@@ -721,6 +882,9 @@ report = function(ui: UI, obj: Value, path: string, opts: Opts, self: Entity?, b
 	table.move(idPairs, 1, #idPairs, #pairs + 1, pairs)
 	if #pairs > 0 then
 		table.insert(nodes, ui.kv(pairs))
+	end
+	for _, s in secretRows do
+		table.insert(nodes, s)
 	end
 	for _, s in sections do
 		table.insert(nodes, s)
@@ -767,12 +931,35 @@ end
 local function successView(ui: UI, doc: Doc, opts: Opts): { Node }
 	local data = doc.data or json.NULL
 	local subject = subjectOf(doc, opts)
-	local bar = barFor(ui, opts, root(opts, "data"), subject, nil)
+	-- in the block's workspace the record's actions lead the workspace already
+	local bar = if opts.workspace then nil else barFor(ui, opts, root(opts, "data"), subject, nil)
 	if data.kind == "array" then
 		local list = data.items :: { Value }
 		local nodes: { Node } = { listHead(ui, #list, doc.meta) }
 		if #list == 0 then
 			nodes = { ui.text(ui.span("No results", "muted")) }
+		end
+		-- a list of records goes to the tenantctl block, where several can be acted on at once
+		local inv = opts.inv
+		local line = if inv
+				and not opts.workspace
+				and isRowList(data)
+				and entityAt(opts, root(opts, "data"), list[1])
+			then actions.lineOf(inv)
+			else nil
+		if line then
+			nodes[1] = with(
+				ui.row({
+					nodes[1],
+					ui.button("Work on these", {
+						size = "sm",
+						icon = "list-checks",
+						title = "Open this list in the tenantctl panel to act on several at once",
+						actions = { click = run.act(line) },
+					}),
+				}),
+				{ align = "center", wrap = true }
+			)
 		end
 		-- the record the list belongs to (`teams members Sales`: the team) and its actions
 		if bar then
@@ -937,7 +1124,24 @@ local function render(ui: UI, doc: Doc, opts: Opts): Node
 	return with(ui.col(nodes), { role = "tenantctl.view" })
 end
 
+-- The actions bar of the record a workspace is about: every action on it, the reads included.
+local function recordBar(ui: UI, opts: Opts, path: string, entity: Entity): Node?
+	local inv = opts.inv
+	if inv == nil then
+		return nil
+	end
+	return actionBar(ui, actions.targets(inv, entity, nil, nil), path, opts, ONE)
+end
+
+-- The name of a record: its first naming field that isn't an id.
+local function titleOf(v: Value?): string?
+	local key = if v then titleKey(v) else nil
+	return if key then field(v, key) else nil
+end
+
 return {
 	render = render,
+	recordBar = recordBar,
+	titleOf = titleOf,
 	MAX_ROWS = MAX_ROWS,
 }

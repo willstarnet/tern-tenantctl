@@ -58,6 +58,12 @@ end
 function ui.overflow(hidden: number): Node
 	return node("overflow", { hidden = hidden })
 end
+function ui.progress(value: number?, label: any): Node
+	return node("progress", { value = value, label = label })
+end
+function ui.code(text: string, lang: string?): Node
+	return node("code", { text = text, lang = lang })
+end
 function ui.button(t: string?, props: { [string]: any }?): Node
 	local p: { [string]: any } = { text = t or "" }
 	for k, v in props or {} do

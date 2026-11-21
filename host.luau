@@ -39,9 +39,13 @@ end
 local nonce = newNonce()
 tern.kv.set("nonce", nonce)
 
--- The link a click opens: the command line, what to ask for first and where to run it.
-local function link(line: string, ask: string?, cwd: string?): string
-	local payload = tern.json.encode({ nonce = nonce, line = line, ask = ask, cwd = cwd })
+-- A bulk action whose input is asked for once: its label and each row's line.
+type Batch = { label: string, items: { runs.Item } }
+
+-- The link a click opens: the command line, what to ask for first and where to run it; from the
+-- tenantctl block also the workspace it was clicked in, or the rows of a bulk action.
+local function link(line: string, ask: string?, cwd: string?, from: string?, batch: Batch?): string
+	local payload = tern.json.encode({ nonce = nonce, line = line, ask = ask, cwd = cwd, from = from, batch = batch })
 	return "tern-tenantctl://action/" .. tern.base64.encode(payload, { url = true })
 end
 
@@ -153,6 +157,10 @@ local lens: LensDef<LensState> = {
 	event = function(state, ev, cx)
 		if togglePanel(state.opened, ev) then
 			return
+		elseif ev.ev == "action" and ev.act == "copy" and type(ev.value) == "string" then
+			cx:copy(ev.value)
+			cx:toast("success", "Copied")
+			return
 		elseif ev.ev == "action" then
 			local line, ask = run.parseAct(ev.act, ev.value)
 			if line then
@@ -166,10 +174,10 @@ local lens: LensDef<LensState> = {
 
 tern.lens.define("tenantctl", lens)
 
--- Starts `line` in the block: tenantctl itself, through the login shell so it is found on the same
--- PATH as in a terminal, its words passed as arguments (never read as shell code).
-local function start(state: runs.State, cx: BlockCx, line: string, cwd: string?)
-	local r = runs.add(state, line, cwd)
+-- Starts run `r` of the block: tenantctl itself, through the login shell so it is found on the same
+-- PATH as in a terminal, its words passed as arguments (never read as shell code). When it ends,
+-- what follows from it (its record read again, the next of its batch) starts too.
+local function start(state: runs.State, cx: BlockCx, r: runs.Run)
 	local spec = r.spec
 	if spec == nil then
 		return
@@ -182,25 +190,47 @@ local function start(state: runs.State, cx: BlockCx, line: string, cwd: string?)
 	local env = table.clone(spec.env)
 	env.TENANTCTL_OUTPUT = "json"
 	local began = tern.now()
+	local function ended(res: ProcessResult)
+		local follow = runs.settle(state, r, res, (tern.now() - began) / 1000)
+		for _, after in follow do
+			start(state, cx, after)
+		end
+		for _, after in runs.due(state) do
+			start(state, cx, after)
+		end
+		cx:render()
+		cx:save()
+		local level, text, sub = runs.summary(state, r)
+		if level and text then
+			cx:toast(level :: ToastLevel, text, sub)
+		end
+	end
 	local ok, err = pcall(
 		tern.process.run :: any,
 		argv,
-		{ cwd = cwd or tern.getenv("HOME"), env = env, timeout_ms = TIMEOUT_MS },
-		function(res: ProcessResult)
-			runs.settle(r, res, (tern.now() - began) / 1000)
-			cx:render()
-			cx:save()
-			local level, text, sub = runs.summary(r)
-			cx:toast(level :: ToastLevel, text, sub)
-		end
+		{ cwd = r.cwd or tern.getenv("HOME"), env = env, timeout_ms = TIMEOUT_MS },
+		ended
 	)
 	if not ok then
-		runs.settle(r, { status = -1, stdout = "", stderr = tostring(err), timed_out = false }, 0)
+		ended({ status = -1, stdout = "", stderr = tostring(err), timed_out = false })
 	end
 end
 
+local function startAll(state: runs.State, cx: BlockCx, list: { runs.Run })
+	for _, r in list do
+		if r.status == "running" then
+			start(state, cx, r)
+		end
+	end
+	for _, r in runs.due(state) do
+		start(state, cx, r)
+	end
+end
+
+type Payload = { line: string, cwd: string?, from: string?, batch: Batch? }
+
 -- An action link's payload, when it carries this plugin's secret.
-local function decode(text: any): { line: string, cwd: string? }?
+local function decode(text: any): Payload?
 	if type(text) ~= "string" then
 		return nil
 	end
@@ -208,7 +238,42 @@ local function decode(text: any): { line: string, cwd: string? }?
 	if not ok or type(payload) ~= "table" or payload.nonce ~= nonce or type(payload.line) ~= "string" then
 		return nil
 	end
-	return { line = payload.line, cwd = if type(payload.cwd) == "string" then payload.cwd else nil }
+	local batch: Batch? = nil
+	local b = payload.batch
+	if type(b) == "table" and type(b.label) == "string" and type(b.items) == "table" then
+		local items: { runs.Item } = {}
+		for _, it in b.items do
+			if type(it) == "table" and type(it.line) == "string" then
+				table.insert(items, { line = it.line, row = tostring(it.row or ""), name = tostring(it.name or "") })
+			end
+		end
+		batch = { label = b.label, items = items }
+	end
+	return {
+		line = payload.line,
+		cwd = if type(payload.cwd) == "string" then payload.cwd else nil,
+		from = if type(payload.from) == "string" then payload.from else nil,
+		batch = batch,
+	}
+end
+
+-- The working directory of the workspace in front, for actions started from it.
+local function cwdOf(state: runs.State): string?
+	local w = runs.space(state, state.current)
+	return if w then w.cwd else nil
+end
+
+-- Runs what a link carried: a bulk action's rows in the workspace it was clicked in, else its line.
+local function runPayload(state: runs.State, cx: BlockCx, p: Payload)
+	local batch = p.batch
+	if batch then
+		if p.from then
+			runs.focus(state, p.from)
+		end
+		startAll(state, cx, runs.addBatch(state, batch.label, batch.items, p.cwd or cwdOf(state)))
+	else
+		startAll(state, cx, runs.submit(state, p.line, p.cwd, p.from))
+	end
 end
 
 local block: BlockDef<runs.State> = {
@@ -219,7 +284,7 @@ local block: BlockDef<runs.State> = {
 		local state = runs.new()
 		local payload = decode(args[1])
 		if payload then
-			start(state, cx, payload.line, payload.cwd)
+			runPayload(state, cx, payload)
 		end
 		-- saved at once, so a restart shows this run instead of starting it again
 		cx:save()
@@ -230,37 +295,93 @@ local block: BlockDef<runs.State> = {
 		return { main = runs.view(tern.ui, state, os.time()) }
 	end,
 
-	title = function(_state)
-		return "tenantctl"
+	title = function(state)
+		local w = runs.space(state, state.current)
+		return if w then `tenantctl · {w.name}` else "tenantctl"
+	end,
+
+	key = function(state, key, _cx)
+		-- Esc clears the rows picked in every table
+		if key.name == "escape" and next(state.picked) ~= nil then
+			state.picked = {}
+			return true
+		end
+		return false
 	end,
 
 	event = function(state, ev, cx)
-		if ev.ev == "action" and ev.act == "enqueue" then
-			-- an action routed here by window.luau
-			local payload = decode(ev.value)
-			if payload then
-				start(state, cx, payload.line, payload.cwd)
-			end
+		if ev.ev == "change" and type(ev.value) == "table" then
+			runs.setPicked(state, ev.value)
 			return
-		elseif ev.ev == "action" and ev.act == "copy" and type(ev.value) == "string" then
-			cx:copy(ev.value)
-			cx:toast("success", "Copied")
-			return
-		elseif togglePanel(state.opened, ev) then
-			return
-		elseif ev.ev == "action" then
-			local line, ask = run.parseAct(ev.act, ev.value)
-			if line then
-				local cwd = if state.runs[1] then state.runs[1].cwd else nil
-				if ask then
-					cx:open(link(line, ask, cwd))
-				else
-					start(state, cx, line, cwd)
-				end
-			end
+		elseif ev.ev ~= "action" then
+			toggleRow(state.selected, ev)
 			return
 		end
-		toggleRow(state.selected, ev)
+		local act, value = ev.act, if type(ev.value) == "string" then ev.value else nil
+		if act == "enqueue" then
+			-- an action clicked in a terminal's view, routed here by window.luau
+			local payload = decode(value)
+			if payload then
+				runPayload(state, cx, payload)
+			end
+		elseif act == "copy" and value then
+			cx:copy(value)
+			cx:toast("success", "Copied")
+		elseif togglePanel(state.opened, ev) then
+			return
+		elseif act == "space" and value then
+			runs.focus(state, value)
+		elseif act == "tab" and value then
+			local key, label = string.match(value, "^(.*)|([^|]+)$")
+			if key and label then
+				runs.showTab(state, key, label)
+			end
+		elseif act == "close" and value then
+			runs.close(state, value)
+		elseif act == "refresh" and value then
+			local w = runs.space(state, value)
+			local r = if w then runs.refresh(state, w) else nil
+			if r then
+				startAll(state, cx, { r })
+			end
+		elseif act == "pick" and value then
+			runs.togglePicking(state, value)
+		elseif act == "bulk" and value then
+			local path, label = string.match(value, "^(.*)|([^|]+)$")
+			local items = if path and label then runs.bulkPlan(state, path, label) else {}
+			if #items == 0 or label == nil then
+				cx:toast("error", "Nothing to run", "No picked row has this action")
+				return
+			end
+			local batch: Batch = { label = (string.gsub(label :: string, "…$", "")), items = items }
+			state.opened = {}
+			local ask = items[1].ask
+			if ask then
+				-- asked once, over the pane, for every row
+				cx:open(link(items[1].line, ask, cwdOf(state), state.current, batch))
+			else
+				runPayload(state, cx, { line = items[1].line, cwd = cwdOf(state), from = state.current, batch = batch })
+			end
+		elseif act == "approveall" and value then
+			local key, entry = string.match(value, "^(.*)|(%d+)$")
+			local items = if key and entry then runs.approvals(state, key, tonumber(entry) :: number) else {}
+			if #items > 0 then
+				startAll(state, cx, runs.addBatch(state, "Approve", items, cwdOf(state)))
+			end
+		else
+			local line, ask = run.parseAct(act, value)
+			if line == nil then
+				return
+			end
+			-- the panel it was picked from closes, so its result shows where the panel was
+			state.opened = {}
+			if ask then
+				cx:open(link(line, ask, cwdOf(state), state.current))
+			else
+				startAll(state, cx, runs.submit(state, line, cwdOf(state), state.current))
+			end
+		end
+		cx:save()
 	end,
 
 	save = runs.save,
