@@ -6,6 +6,27 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A record's actions show on labeled lines instead of behind panels: **Look up** lists every
+  troubleshooting read and every read in the record's own area (a device's Details, Compliance,
+  Config states, Apps, BitLocker key, LAPS, Actions, Sync status), with the other areas' under its
+  **More**; **Change** leads with the most used changes, the rest under its **More**; **Related**
+  holds the related records' buttons.
+- **BitLocker key** shows the recovery keys, not only their ids (it runs `bitlocker-key --reveal`;
+  tenantctl records the reveal in the Entra audit log). **Reveal BitLocker key** is gone.
+
+### Added
+
+- A `bitlocker-key` run without `--reveal` leads with **Reveal keys**, and a `laps` run without it
+  with **Reveal LAPS password**.
+
+### Fixed
+
+- The first line of a view (a record's **Look up** buttons) wraps before the top-right corner,
+  where Tern draws its tenantctl · Native · Raw switch when the block is selected, so no button
+  hides under it.
+
 ## [0.4.1] - 2026-11-21
 
 ### Fixed

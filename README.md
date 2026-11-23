@@ -28,9 +28,9 @@ tenantctl entra users get jane                  # labeled fields, dates with the
   open a card with every field, including the ones the table had no room for; click it again to
   close it. "More results exist" shows when a list was cut.
 - **Actions** on every record: the card of a selected row, the record a report is about and the
-  records nested in it (a user's manager, a device's Entra object) lead with buttons for their
-  most used tenantctl commands, and open every other command that acts on them in a panel (see
-  below).
+  records nested in it (a user's manager, a device's Entra object) show what you can look up about
+  them and their most used changes as buttons, a line each, with every other command that acts on
+  them a click away (see below).
 - **Errors** as a card: the message, its code, the hint and the Graph request id. When a name
   matches several records, the candidates show as a table: **Use** runs the same command on that
   one by its id, and selecting a row gives it its actions.
@@ -45,33 +45,41 @@ Help, `--version` and output the lens can't read stay raw.
 ## Actions
 
 Select a device in `tenantctl intune devices list` (or under a user in `troubleshoot user`) and its
-card leads with **Sync**, **Troubleshoot**, **Restart** and **Rotate LAPS**; select a user and you
-get **Troubleshoot**, **Sign-ins**, **Revoke sessions** and **Reset password**. Every tenantctl
-command that takes a record as its argument is offered on that record, for users, groups, Intune
-and Entra devices, Defender machines, Autopilot devices, apps, policies, incidents, alerts,
-mailboxes, inbox rules, sites, files, teams and more:
+card shows its actions on three labeled lines:
 
-- its most used commands lead as buttons, destructive ones in red;
-- **Look up** opens a panel of the commands that read more about it (details, compliance,
-  sign-ins, …), one column per area (Troubleshoot, Entra, Exchange, …), wrapping onto more lines
-  in a narrow pane; click it again to close it;
-- **Manage** opens the rest of its changes the same way, its own area first, then the others (a
-  user's mailbox forwarding, OneDrive access, …);
-- each related record gets a button that opens its panel: a device's user, Entra object and
-  Defender machine, reached through the ids the row carries (Intune's `azureADDeviceId` names the
-  Entra device and the Defender machine);
-- a row listed under another record acts on the pair, and that action leads: a member of
-  `entra groups members Sales` gets **Remove member**, a trustee of `exchange permissions list`
+- **Look up**: **Troubleshoot**, **Details**, **Compliance**, **Config states**, **Apps**,
+  **BitLocker key**, **LAPS**, **Reveal LAPS password**, **Actions**, **Sync status**;
+- **Change**: **Sync**, **Restart**, **Rotate LAPS**, then **More**;
+- **Related**: **User** and **Defender machine**.
+
+Select a user and **Look up** has **Troubleshoot**, **Sign-ins**, **Groups**, **Licenses** and its
+other Entra reads, and **Change** leads with **Revoke sessions** and **Reset password**. Every
+tenantctl command that takes a record as its argument is offered on that record, for users,
+groups, Intune and Entra devices, Defender machines, Autopilot devices, apps, policies, incidents,
+alerts, mailboxes, inbox rules, sites, files, teams and more:
+
+- **Look up** shows every troubleshooting read and every read in the record's own area; **More**
+  at its end opens a panel of the other areas' (a user's mailbox, OneDrive, Teams, …), one column
+  per area, wrapping onto more lines in a narrow pane; click it again to close it;
+- **Change** leads with the most used changes, destructive ones in red; its **More** opens the rest
+  the same way, its own area first, then the others (a user's mailbox forwarding, OneDrive access,
+  …);
+- **Related** has a button per related record that opens its panel: a device's user, Entra object
+  and Defender machine, reached through the ids the row carries (Intune's `azureADDeviceId` names
+  the Entra device and the Defender machine);
+- a row listed under another record acts on the pair, and that action leads its changes: a member
+  of `entra groups members Sales` gets **Remove member**, a trustee of `exchange permissions list`
   gets **Remove permissions** with its access level, an inbox rule gets **Delete** on its
   mailbox. Adding what is already there is not offered.
 
 Commands that would do nothing are left out: **Enable** on an enabled account, **Lock** on a
-Windows device, **Rotate LAPS** on an iPhone. A device also gets the rarer forms of its routine
-tasks next to the plain ones: **Reveal LAPS password** and **Reveal BitLocker key** (tenantctl
-records every reveal in the Entra audit log; revealed passwords and keys get a **Copy** button),
-**Defender full scan**, **Wipe, keep enrollment** and **Wipe, keep user files** (Windows),
-**Fresh start, keep user files**; a Defender machine gets **Full scan** and **Isolate, keep
-Outlook and Teams**.
+Windows device, **Rotate LAPS** on an iPhone. **BitLocker key** shows the recovery keys
+themselves, not only their ids; a `bitlocker-key` run without `--reveal` leads with **Reveal
+keys**. A device also gets the rarer forms of its routine tasks next to the plain ones: **Reveal
+LAPS password** (tenantctl records every reveal in the Entra audit log; revealed passwords and
+keys get a **Copy** button), **Defender full scan**, **Wipe, keep enrollment** and **Wipe, keep
+user files** (Windows), **Fresh start, keep user files**; a Defender machine gets **Full scan** and
+**Isolate, keep Outlook and Teams**.
 
 ### The tenantctl panel
 
