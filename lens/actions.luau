@@ -31,6 +31,8 @@ export type Action = {
 	ask: string?,
 	summary: string,
 	domain: string,
+	-- troubleshooting or the record's own area: shown with the record, the rest a click away
+	primary: boolean,
 }
 
 -- Actions on one record, reached through `ref`.
@@ -951,13 +953,6 @@ local VARIANTS: { [string]: { Variant } } = {
 			summary = "Show the LAPS local admin password; every reveal is recorded in the Entra audit log",
 		},
 	},
-	["intune devices bitlocker-key"] = {
-		{
-			flag = "--reveal",
-			label = "Reveal BitLocker key",
-			summary = "Show the BitLocker recovery keys; every reveal is recorded in the Entra audit log",
-		},
-	},
 	["intune devices defender-scan"] = {
 		{
 			flag = "--full-scan",
@@ -998,6 +993,18 @@ local VARIANTS: { [string]: { Variant } } = {
 	},
 }
 
+-- Commands whose action always carries a flag: what is worth reading is behind it (a BitLocker
+-- key id alone unlocks nothing). On a run of the command without the flag, its action is offered
+-- under `label`, leading.
+type Always = { flag: string, label: string, summary: string }
+local ALWAYS: { [string]: Always } = {
+	["intune devices bitlocker-key"] = {
+		flag = "--reveal",
+		label = "Reveal keys",
+		summary = "Show the BitLocker recovery keys; every reveal is recorded in the Entra audit log",
+	},
+}
+
 local RISK_ORDER: { [string]: number } = { read = 0, write = 1, destructive = 2 }
 local DOMAIN_ORDER: { [string]: number } = {
 	troubleshoot = 0,
@@ -1021,14 +1028,12 @@ local FEATURED: { [string]: { string } } = {
 		"entra users signins",
 		"entra users revoke-sessions",
 		"entra users reset-password",
-		"entra users devices",
 	},
 	["intune.device"] = {
 		"intune devices sync",
 		"troubleshoot device",
 		"intune devices restart",
 		"intune devices rotate-laps",
-		"intune devices compliance",
 	},
 	["entra.device"] = { "entra devices get", "entra devices disable", "entra devices enable" },
 	["defender.machine"] = {
@@ -1047,22 +1052,28 @@ local FEATURED: { [string]: { string } } = {
 	["exchange.rule"] = { "exchange rules disable", "exchange rules delete" },
 	["quarantine.message"] = { "exchange quarantine release" },
 }
+-- Changes a record leads with; its troubleshooting and own-area reads all show with it anyway.
 local MAX_FEATURED = 4
 
--- The actions `g` leads with: a change through the record it was listed under (remove this
--- member: what the list is for) first, then its kind's featured commands, else its first few
--- troubleshooting and own-area actions that aren't destructive.
-local function featuredOf(g: Target, ids: { [Action]: string }, paired: { [Action]: boolean }): { Action }
+-- The actions `g` leads with: those in `leads` (a change through the record it was listed under,
+-- remove this member: what the list is for; the reveal its own run left out) first, then its
+-- kind's featured commands, else its first few troubleshooting and own-area changes that aren't
+-- destructive. Reads lead its lookups in that order; at most `MAX_FEATURED` changes lead.
+local function featuredOf(g: Target, ids: { [Action]: string }, leads: { [Action]: boolean }): { Action }
 	local out: { Action } = {}
 	local taken: { [Action]: boolean } = {}
+	local changes = 0
 	local function take(a: Action)
-		if #out < MAX_FEATURED and not taken[a] then
-			taken[a] = true
-			table.insert(out, a)
+		local change = a.risk ~= "read"
+		if taken[a] or (change and changes >= MAX_FEATURED) then
+			return
 		end
+		taken[a] = true
+		changes += if change then 1 else 0
+		table.insert(out, a)
 	end
 	for _, a in g.actions do
-		if paired[a] then
+		if leads[a] then
 			take(a)
 		end
 	end
@@ -1078,11 +1089,11 @@ local function featuredOf(g: Target, ids: { [Action]: string }, paired: { [Actio
 		return out
 	end
 	for _, a in g.actions do
-		if #out >= MAX_FEATURED - 1 then
+		if changes >= MAX_FEATURED - 1 then
 			break
 		end
 		local own = a.domain == DOMAINS.troubleshoot or homeOf(ids[a], g.kind) ~= nil
-		if own and a.risk ~= "destructive" then
+		if own and a.risk == "write" then
 			take(a)
 		end
 	end
@@ -1092,13 +1103,14 @@ end
 -- Every action on `subject`, grouped by the record each acts on: the subject first, then the
 -- records it relates to (its user, its Defender machine, …). `parent` is the record the subject
 -- was listed under (a member list's group, an inbox rule list's mailbox). `current` is the run's
--- own command, left out when the subject is what the run was about (`subject.ref` set).
+-- own command, left out when the subject is what the run was about (`subject.ref` set), save the
+-- forms of it the run didn't use (its reveal), which then lead.
 local function targets(inv: Invocation, subject: Entity, parent: Entity?, current: string?): { Target }
 	local groups: { [string]: Target } = {}
 	local order: { string } = {}
 	local rank: { [Action]: number } = {}
 	local ids: { [Action]: string } = {}
-	local paired: { [Action]: boolean } = {}
+	local leads: { [Action]: boolean } = {}
 	for index, c in catalog.commands do
 		local slots = slotsOf(c)
 		local bound, slot, usedParent = bind(c, slots, subject, parent, current)
@@ -1113,7 +1125,13 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 		-- an action through the parent belongs to the subject, under its own name
 		local kind: string = if slot ~= slots[1] then subject.kind else reached :: string
 		local ref = refFor(kind, subject) or bound[slot.name]
-		if c.id == current and slot == slots[1] and kind == subject.kind and subject.ref then
+		local isCurrent = c.id == current and slot == slots[1] and kind == subject.kind and subject.ref ~= nil
+		local function ran(flag: string): boolean
+			return table.find(inv.args, flag) ~= nil
+		end
+		local always = ALWAYS[c.id]
+		local unused = (always ~= nil and not ran(always.flag)) or VARIANTS[c.id] ~= nil
+		if isCurrent and (c.risk ~= "read" or not unused) then
 			continue
 		end
 		-- no Enable on an enabled account, no Unarchive on a live team
@@ -1147,22 +1165,42 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 			groups[shown] = { kind = shown, ref = ref, own = shown == subject.kind, actions = {}, featured = {} }
 			table.insert(order, shown)
 		end
-		local function add(action: Action, r: number)
+		local function add(action: Action, r: number, lead: boolean)
 			ids[action] = c.id
-			paired[action] = slot ~= slots[1]
+			leads[action] = lead or slot ~= slots[1]
 			rank[action] = r
 			table.insert(groups[shown].actions, action)
 		end
-		add({
-			label = labelOf(c, kind, slots) .. (if ask then "…" else ""),
-			line = line :: string,
-			risk = c.risk,
-			ask = ask,
-			summary = c.summary,
-			domain = DOMAINS[domain] or domain,
-		}, base)
+		local primary = area < 2
+		if always then
+			line = `{line} {always.flag}`
+		end
+		if not isCurrent then
+			add({
+				label = labelOf(c, kind, slots) .. (if ask then "…" else ""),
+				line = line :: string,
+				risk = c.risk,
+				ask = ask,
+				summary = if always then always.summary else c.summary,
+				domain = DOMAINS[domain] or domain,
+				primary = primary,
+			}, base, false)
+		elseif always and not ran(always.flag) then
+			add({
+				label = always.label .. (if ask then "…" else ""),
+				line = line :: string,
+				risk = c.risk,
+				ask = ask,
+				summary = always.summary,
+				domain = DOMAINS[domain] or domain,
+				primary = primary,
+			}, base, true)
+		end
 		-- the same command with a flag that makes it another action, listed right after it
 		for i, v in VARIANTS[c.id] or ({} :: { Variant }) do
+			if isCurrent and ran(v.flag) then
+				continue
+			end
 			if v.platforms and platform == nil then
 				platform = platformOf(subject.value)
 			end
@@ -1176,7 +1214,8 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 				ask = ask,
 				summary = v.summary,
 				domain = DOMAINS[domain] or domain,
-			}, base + i / 10)
+				primary = primary,
+			}, base + i / 10, isCurrent)
 		end
 	end
 	local own: { Target } = {}
@@ -1187,7 +1226,7 @@ local function targets(inv: Invocation, subject: Entity, parent: Entity?, curren
 			return rank[a] < rank[b]
 		end)
 		if g.own then
-			g.featured = featuredOf(g, ids, paired)
+			g.featured = featuredOf(g, ids, leads)
 		end
 		table.insert(if g.own then own else related, g)
 	end

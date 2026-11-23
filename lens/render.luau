@@ -365,17 +365,30 @@ local function panelButton(ui: UI, text: string, path: string, panel: string, op
 	})
 end
 
--- A record's actions: the few it leads with as buttons (destructive ones red), then buttons that
--- open a panel of the rest, by area: what to look up about it, what to change, and each related
--- record's actions (its user, its Defender machine, …). `path` keys which panel is open. `lead` goes
--- first (Open, in the tenantctl block). A bulk bar keeps to the record's own actions, and leaves
--- out those whose input differs per record (a new name).
+-- One line of a record's actions: its label in a column of its own, then its buttons, wrapping
+-- under each other in a narrow pane.
+local function barRow(ui: UI, label: string, buttons: { Node }): Node
+	return with(
+		ui.row({
+			with(ui.text(ui.span(label, "muted")), { basis = "content", min = { w = "8ch" } }),
+			with(ui.row(buttons), { gap = "sm", wrap = true, align = "center", grow = 1, basis = 0 }),
+		}),
+		{ gap = "sm", align = "start", role = "tenantctl.bar-row" }
+	)
+end
+
+-- A record's actions, a line each: **Look up**, the reads about it (troubleshooting and its own
+-- area's, those it leads with first; the other areas' behind **More**); **Change**, the changes
+-- it leads with (destructive ones red; the rest behind **More**); **Related**, a button per record
+-- it relates to (its user, its Defender machine, …) that opens a panel of that record's actions.
+-- `path` keys which panel is open. `lead` goes first (Open, in the tenantctl block). A bulk bar
+-- keeps to the record's own actions, and leaves out those whose input differs per record (a new
+-- name).
 local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts, style: BarStyle, lead: Node?): Node?
 	local opened = if opts.opened then opts.opened[path] else nil
-	local buttons: { Node } = {}
-	if lead then
-		table.insert(buttons, lead)
-	end
+	local reads: { Node } = {}
+	local changes: { Node } = {}
+	local related: { Node } = {}
 	local panel: Node? = nil
 	for _, t in targets do
 		if not t.own then
@@ -385,7 +398,7 @@ local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts, 
 			local kind = actions.KINDS[t.kind]
 			local name = if kind then kind.name else t.kind
 			local id = `rel:{t.kind}`
-			table.insert(buttons, panelButton(ui, name, path, id, opened, `{name} {t.ref}`))
+			table.insert(related, panelButton(ui, name, path, id, opened, `{name} {t.ref}`))
 			if opened == id then
 				panel = ui.col({
 					ui.text({ ui.span(name, "strong"), ui.span(`  {t.ref}`, "muted") }),
@@ -394,41 +407,64 @@ local function actionBar(ui: UI, targets: { Target }, path: string, opts: Opts, 
 			end
 			continue
 		end
-		local featured: { [Action]: boolean } = {}
+		local function usable(a: Action): boolean
+			return not (style.bulk and a.ask == "--name")
+		end
+		local shown: { [Action]: boolean } = {}
 		for _, a in t.featured do
-			featured[a] = true
-			if not (style.bulk and a.ask == "--name") then
-				table.insert(buttons, actionButton(ui, a, opts, style))
+			if usable(a) then
+				shown[a] = true
+				table.insert(if a.risk == "read" then reads else changes, actionButton(ui, a, opts, style))
 			end
 		end
-		local reads: { Action } = {}
-		local changes: { Action } = {}
+		local moreReads: { Action } = {}
+		local moreChanges: { Action } = {}
 		for _, a in t.actions do
-			if not featured[a] and not (style.bulk and a.ask == "--name") then
-				table.insert(if a.risk == "read" then reads else changes, a)
+			if shown[a] or not usable(a) then
+				continue
+			end
+			if a.risk ~= "read" then
+				table.insert(moreChanges, a)
+			elseif a.primary then
+				table.insert(reads, actionButton(ui, a, opts, style))
+			else
+				table.insert(moreReads, a)
 			end
 		end
-		if #reads > 0 then
-			table.insert(buttons, panelButton(ui, "Look up", path, "lookup", opened))
+		if #moreReads > 0 then
+			table.insert(reads, panelButton(ui, "More", path, "lookup", opened, "Look up more about it"))
 			if opened == "lookup" then
-				panel = actionColumns(ui, reads, opts, style)
+				panel = actionColumns(ui, moreReads, opts, style)
 			end
 		end
-		if #changes > 0 then
-			table.insert(buttons, panelButton(ui, "Manage", path, "manage", opened))
+		if #moreChanges > 0 then
+			table.insert(changes, panelButton(ui, "More", path, "manage", opened, "Its other changes"))
 			if opened == "manage" then
-				panel = actionColumns(ui, changes, opts, style)
+				panel = actionColumns(ui, moreChanges, opts, style)
 			end
 		end
 	end
-	if #buttons == 0 then
+	local rows: { Node } = {}
+	local parts: { { label: string, buttons: { Node } } } = {
+		{ label = "Look up", buttons = reads },
+		{ label = "Change", buttons = changes },
+		{ label = "Related", buttons = related },
+	}
+	for _, part in parts do
+		if #part.buttons > 0 then
+			if lead and #rows == 0 then
+				table.insert(part.buttons, 1, lead)
+			end
+			table.insert(rows, barRow(ui, part.label, part.buttons))
+		end
+	end
+	if #rows == 0 then
 		return nil
 	end
-	local nodes: { Node } = { with(ui.row(buttons), { gap = "sm", wrap = true, align = "center" }) }
 	if panel then
-		table.insert(nodes, panel)
+		table.insert(rows, panel)
 	end
-	return with(ui.col(nodes), { role = "tenantctl.actions" })
+	return with(ui.col(rows), { role = "tenantctl.actions" })
 end
 
 -- In the tenantctl block, a record listed in a result opens as its own workspace.
@@ -1103,6 +1139,23 @@ local function notesView(ui: UI, notes: { string }): Node
 	return fold(ui.section({ ui.span("Notes", "strong"), ui.span(`  {#notes}`, "muted") }, lines), #notes > 3)
 end
 
+-- Tern draws its view switch (tenantctl · Native · Raw · copy) over the top-right corner of a
+-- selected lens block: the view's first line keeps that much width clear, so nothing on it hides
+-- under the switch. Its other lines use the full width.
+local CORNER = "30ch"
+
+local function clearCorner(ui: UI, node: Node): Node
+	local spacer = with(ui.row({}), { basis = CORNER, min = { w = CORNER }, role = "tenantctl.corner" })
+	local p = node.p :: any
+	local first = if p and p.role == "tenantctl.actions" and node.c then node.c[1] else nil
+	if first and first.c then
+		-- an actions bar: its first line's buttons wrap before the corner
+		table.insert(first.c, spacer)
+		return node
+	end
+	return with(ui.row({ with(node, { grow = 1, basis = 0 }), spacer }), { align = "start" })
+end
+
 local function render(ui: UI, doc: Doc, opts: Opts): Node
 	local nodes: { Node }
 	if doc.kind == "error" then
@@ -1120,6 +1173,10 @@ local function render(ui: UI, doc: Doc, opts: Opts): Node
 			nodes,
 			ui.text(ui.span("Long values are cut in table output; TENANTCTL_OUTPUT=json shows them whole.", "dim"))
 		)
+	end
+	-- the tenantctl block draws no switch over its runs
+	if not opts.workspace and nodes[1] then
+		nodes[1] = clearCorner(ui, nodes[1])
 	end
 	return with(ui.col(nodes), { role = "tenantctl.view" })
 end

@@ -96,11 +96,18 @@ local function offer(list: { Offer }, label: string, panel: string?): Offer?
 	return nil
 end
 
--- The labels of a node's action buttons, in order.
-local function labels(node: fake.Node): { string }
+-- A bar's lines by their label (`Look up`, `Change`, `Related`): every button's text, panel
+-- toggles included, in order.
+local function lines(bar: fake.Node): { [string]: { string } }
 	local out = {}
-	for _, o in buttonsIn(node) do
-		table.insert(out, o.label)
+	for _, n in find(bar, "row") do
+		if n.p and (n.p :: any).role == "tenantctl.bar-row" then
+			local texts = {}
+			for _, b in find(n, "button") do
+				table.insert(texts, (b.p :: any).text)
+			end
+			out[fake.texts(n)[1]] = texts
+		end
 	end
 	return out
 end
@@ -114,20 +121,40 @@ describe("actions on a selected row", function()
 		expect((offer(all, "Sync") :: Offer).act).toBe(`run=tenantctl intune devices sync {LAPTOP}`)
 		expect((offer(all, "Rotate LAPS") :: Offer).act).toBe(`run=tenantctl intune devices rotate-laps {LAPTOP}`)
 		expect((offer(all, "Restart") :: Offer).variant).toBe("danger")
-		expect((offer(all, "Details", "Look up") :: Offer).act).toBe(`run=tenantctl intune devices get {LAPTOP}`)
+		local details = offer(all, "Details") :: Offer
+		expect(details.act).toBe(`run=tenantctl intune devices get {LAPTOP}`)
+		expect(details.panel).toBeNil()
 	end)
 
-	it("leads with the most used actions and keeps the rest a click away", function()
-		local root = view("devices-list.json", DEVICES, { data = 1 })
-		expect(labels(bars(root)[1])).toEqual({ "Sync", "Troubleshoot", "Restart", "Rotate LAPS" })
+	it("shows a device's lookups with it and leads its changes with the most used", function()
+		local bar = lines(bars(view("devices-list.json", DEVICES, { data = 1 }))[1])
+		expect(bar["Look up"]).toEqual({
+			"Troubleshoot",
+			"Details",
+			"Compliance",
+			"Config states",
+			"Apps",
+			"BitLocker key",
+			"LAPS",
+			"Reveal LAPS password",
+			"Actions",
+			"Sync status",
+		})
+		expect(bar["Change"]).toEqual({ "Sync", "Restart", "Rotate LAPS", "More" })
+		expect(bar["Related"]).toEqual({ "User", "Defender machine" })
 		local all = reachable("devices-list.json", DEVICES, { data = 1 })
-		expect(offer(all, "Sync", "Look up")).toBeNil()
-		expect((offer(all, "Wipe", "Manage") :: Offer).variant).toBe("danger")
-		expect((offer(all, "Locate", "Manage") :: Offer).variant).toBe("quiet")
-		expect(offer(all, "Restart", "Manage")).toBeNil()
+		expect((offer(all, "Wipe", "More") :: Offer).variant).toBe("danger")
+		expect((offer(all, "Locate", "More") :: Offer).variant).toBe("quiet")
+		expect(offer(all, "Restart", "More")).toBeNil()
 	end)
 
-	it("lists a panel's actions in a column per area", function()
+	it("shows a user's own lookups and keeps the other areas' a click away", function()
+		local bar = lines(bars(view("users-get.json", "tenantctl entra users get jane"))[1])
+		expect(bar["Look up"][1]).toBe("Troubleshoot")
+		expect(bar["Look up"]).toContain("Sign-ins")
+		expect(bar["Look up"]).toContain("Groups")
+		expect(bar["Look up"]).toContain("More")
+		expect(bar["Look up"]).notToContain("Mailbox")
 		local root = view("users-get.json", "tenantctl entra users get jane", nil, { data = "lookup" })
 		local panel = find(root, "row")
 		local columns
@@ -141,7 +168,7 @@ describe("actions on a selected row", function()
 		for _, col in columns do
 			table.insert(heads, fake.texts(col)[1])
 		end
-		expect(heads).toEqual({ "Troubleshoot", "Entra", "Defender", "Exchange", "SharePoint", "Teams", "Purview" })
+		expect(heads).toEqual({ "Defender", "Exchange", "SharePoint", "Teams", "Purview" })
 	end)
 
 	it("reaches the device's user", function()
@@ -183,22 +210,65 @@ describe("actions on a selected row", function()
 
 	it("reveals a Windows device's LAPS password", function()
 		local windows = reachable("devices-list.json", DEVICES, { data = 1 })
-		local reveal = offer(windows, "Reveal LAPS password", "Look up") :: Offer
+		local reveal = offer(windows, "Reveal LAPS password") :: Offer
 		expect(reveal.act).toBe(`run=tenantctl intune devices laps {LAPTOP} --reveal`)
-		expect((offer(windows, "LAPS", "Look up") :: Offer).act).toBe(`run=tenantctl intune devices laps {LAPTOP}`)
+		expect((offer(windows, "LAPS") :: Offer).act).toBe(`run=tenantctl intune devices laps {LAPTOP}`)
 		local iphone = reachable("devices-list.json", DEVICES, { data = 2 })
 		expect(offer(iphone, "Reveal LAPS password")).toBeNil()
 	end)
 
-	it("offers the rarer forms of a device's routine tasks", function()
+	it("reveals a device's BitLocker keys, not just their ids", function()
 		local windows = reachable("devices-list.json", DEVICES, { data = 1 })
-		expect((offer(windows, "Reveal BitLocker key", "Look up") :: Offer).act).toBe(
+		expect((offer(windows, "BitLocker key") :: Offer).act).toBe(
 			`run=tenantctl intune devices bitlocker-key {LAPTOP} --reveal`
 		)
-		expect((offer(windows, "Defender full scan", "Manage") :: Offer).act).toBe(
+		expect(offer(windows, "Reveal BitLocker key")).toBeNil()
+	end)
+
+	it("offers to reveal the keys a BitLocker lookup left hidden, leading", function()
+		local typed = `tenantctl intune devices bitlocker-key {LAPTOP}`
+		local bar = lines(bars(view("bitlocker-keys.json", typed))[1])
+		expect(bar["Look up"][1]).toBe("Reveal keys")
+		-- leading the lookups takes no place from the changes
+		expect(bar["Change"]).toEqual({ "Sync", "Restart", "Rotate LAPS", "More" })
+		local reveal = offer(reachable("bitlocker-keys.json", typed), "Reveal keys") :: Offer
+		expect(reveal.act).toBe(`run=tenantctl intune devices bitlocker-key {LAPTOP} --reveal`)
+		-- once revealed, nothing more to reveal
+		expect(offer(reachable("bitlocker-keys.json", `{typed} --reveal`), "Reveal keys")).toBeNil()
+	end)
+
+	it("keeps the first line clear of Tern's view switch", function()
+		local root = view("bitlocker-keys.json", `tenantctl intune devices bitlocker-key {LAPTOP}`)
+		local rows = {}
+		for _, n in find(bars(root)[1], "row") do
+			if n.p and (n.p :: any).role == "tenantctl.bar-row" then
+				table.insert(rows, n)
+			end
+		end
+		local function clear(row: fake.Node): boolean
+			local last = (row.c :: { fake.Node })[#(row.c :: { fake.Node })]
+			return last.p ~= nil and (last.p :: any).role == "tenantctl.corner"
+		end
+		-- the buttons of the first line wrap before the switch; the other lines use the full width
+		expect(clear(rows[1])).toBe(true)
+		expect(clear(rows[2])).toBe(false)
+	end)
+
+	it("leads a LAPS lookup with its reveal", function()
+		local args = { "intune", "devices", "laps", LAPTOP }
+		local inv = actions.invocation("tenantctl", args, nil, nil, "intune devices laps")
+		local device = { kind = "intune.device", ref = LAPTOP }
+		local own = actions.targets(inv, device, nil, "intune devices laps")[1]
+		expect(own.featured[1].label).toBe("Reveal LAPS password")
+		expect(own.featured[1].line).toBe(`tenantctl intune devices laps {LAPTOP} --reveal`)
+	end)
+
+	it("offers the rarer forms of a device's routine tasks", function()
+		local windows = reachable("devices-list.json", DEVICES, { data = 1 })
+		expect((offer(windows, "Defender full scan", "More") :: Offer).act).toBe(
 			`run=tenantctl intune devices defender-scan {LAPTOP} --full-scan`
 		)
-		expect((offer(windows, "Wipe, keep user files", "Manage") :: Offer).variant).toBe("danger")
+		expect((offer(windows, "Wipe, keep user files", "More") :: Offer).variant).toBe("danger")
 		-- the wipe flags are Windows only
 		local mac = reachable("devices-list.json", DEVICES, { data = 3 })
 		expect(offer(mac, "Wipe")).notToBeNil()
@@ -216,10 +286,11 @@ describe("actions on a selected row", function()
 
 	it("removes a member from the group it was listed under, not adds it again", function()
 		local root = view("group-members.json", "tenantctl entra groups members Sales", { data = 1 })
-		local bar = buttonsIn(bars(find(root, "card")[1])[1])
-		-- what the list is for leads
-		expect(bar[1].label).toBe("Remove member")
-		expect(bar[1].act).toBe("run=tenantctl entra groups remove-member Sales user:bob@contoso.com")
+		local bar = bars(find(root, "card")[1])[1]
+		-- what the list is for leads its changes
+		expect(lines(bar)["Change"][1]).toBe("Remove member")
+		local remove = offer(buttonsIn(bar), "Remove member") :: Offer
+		expect(remove.act).toBe("run=tenantctl entra groups remove-member Sales user:bob@contoso.com")
 		local all = reachable("group-members.json", "tenantctl entra groups members Sales", { data = 1 })
 		expect(offer(all, "Add member")).toBeNil()
 	end)
@@ -241,7 +312,7 @@ describe("actions on the record a run is about", function()
 		local revoke = offer(all, "Revoke sessions") :: Offer
 		expect(revoke.act).toBe("run=tenantctl entra users revoke-sessions jane@contoso.com")
 		expect(revoke.panel).toBeNil()
-		expect(offer(all, "Troubleshoot sign-ins", "Look up")).notToBeNil()
+		expect((offer(all, "Troubleshoot sign-ins") :: Offer).panel).toBeNil()
 		-- the run itself is not offered again
 		expect(offer(all, "Troubleshoot")).toBeNil()
 	end)
@@ -249,7 +320,7 @@ describe("actions on the record a run is about", function()
 	it("leaves out a change that would do nothing", function()
 		local all = reachable("users-get.json", "tenantctl entra users get jane", nil, 1)
 		expect(offer(all, "Enable")).toBeNil()
-		expect(offer(all, "Disable", "Manage")).notToBeNil()
+		expect(offer(all, "Disable", "More")).notToBeNil()
 	end)
 
 	it("acts on the user's manager", function()

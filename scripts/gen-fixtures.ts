@@ -197,6 +197,24 @@ const fixtures: Record<string, Fixture> = {
     command: 'entra users list',
     result: { items: [], truncated: false },
   },
+  'bitlocker-keys': {
+    kind: 'success',
+    command: 'intune devices bitlocker-key',
+    result: {
+      device: {
+        id: '0b8d1c3e-8f4e-4b39-9a51-6c2f0e7d1a11',
+        deviceName: 'LAPTOP-0042',
+        user: 'jane@contoso.com',
+        os: 'Windows 10.0.26100.2314',
+        serialNumber: 'PF0042XY',
+        lastSyncDateTime: '2026-11-17T10:00:00Z',
+        daysSinceLastSync: 3,
+        complianceState: 'noncompliant',
+        managementState: 'managed',
+      },
+      keys: [{ id: '4c1e2d3f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', createdDateTime: '2026-04-16T21:04:00Z', volumeType: '1' }],
+    },
+  },
   'group-members': {
     kind: 'success',
     command: 'entra groups members',
